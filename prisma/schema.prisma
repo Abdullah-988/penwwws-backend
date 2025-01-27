@@ -1,0 +1,80 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int           @id @default(autoincrement())
+  fullname             String?
+  avatarUrl            String?
+  email                String        @unique
+  isEmailVerified      Boolean       @default(false)
+  hashedPassword       String?
+  provider             AccountType   @default(DEFAULT)
+
+  activateTokens       ActivateToken[]
+  schools              MemberOnSchools[]
+
+  createdAt            DateTime      @default(now()) 
+  updatedAt            DateTime      @updatedAt
+}
+
+enum AccountType {
+  DEFAULT
+  GOOGLE
+}
+
+model ActivateToken {
+  id              Int       @id @default(autoincrement())
+  token           String    @unique
+  activatedAt     DateTime?
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model School {
+  id              Int       @id @default(autoincrement())
+  name            String
+  logoUrl         String
+  description     String
+
+  members         MemberOnSchools[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model MemberOnSchools {
+  id              Int       @id @default(autoincrement())
+  role            Role      @default(STUDENT)
+
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolId        Int
+  school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, schoolId])
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  STUDENT
+}

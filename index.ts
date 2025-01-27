@@ -1,6 +1,9 @@
 import express from "express";
 import cors from "cors";
 
+import usersRoute from "./routes/usersRoute";
+import schoolsRoute from "./routes/schoolsRoute";
+
 const port = process.env.PORT || 5555;
 
 const app = express();
@@ -16,9 +19,12 @@ app.use(
 );
 
 app.get("/", (req, res) => {
-  return res.send("School managment system!");
+  return res.send("penwwws!");
 });
 
 app.listen(port, () => {
   console.log(`App is listening to port: ${port}`);
 });
+
+app.use("/api", usersRoute);
+app.use("/api", schoolsRoute);
