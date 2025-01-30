@@ -3,8 +3,147 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import db from "../lib/db";
 import crypto from "crypto";
-// import { sendMail } from "../lib/nodemailer";
+import { sendMail } from "../lib/nodemailer";
 import axios from "axios";
+
+// @desc    Request a password reset email
+// @route   POST /api/user/reset-password
+// @access  Public
+export const resetPasswordRequest = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).send("Missing email address");
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
+      return res.status(422).send("Invalid email format");
+    }
+
+    const doesUserExist = await db.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!doesUserExist) {
+      return res.status(404).send("Email cannot be found or signed in using a provider");
+    }
+
+    const passwordResetTokenString =
+      crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+
+    const passwordReset = await db.passwordResetToken.create({
+      data: {
+        token: passwordResetTokenString,
+        userId: doesUserExist.id,
+      },
+    });
+
+    if (!passwordReset) {
+      return res.status(500).send("There is an error while handling your request");
+    }
+
+    const url = req.headers.origin;
+
+    const passwordResetUrl = `${url}/reset-password/${passwordReset.token}`;
+
+    await sendMail({
+      subject: "Password reset request for Penwwws account",
+      email: doesUserExist.email,
+      html: `
+      <div>
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 1rem;">Reset your Penwwws email password</h1>
+        <a href=${passwordResetUrl} target="_blank" style="background-color: #0072dd; font-size: 14px; color: #ffffff; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem; text-decoration: none;">
+          Reset Your Password
+        </a>
+        <div style="margin-top: 5rem;">
+          <h2 style="font-size: 14px; margin-bottom: 1rem;">If you can't see the button, Use this link instead:</h2>
+          <a href=${passwordResetUrl} target="_blank" style="color: #0072dd;">${passwordResetUrl}</a>
+        </div>
+        <p style="margin-top: 1rem;">This link will expire in 24 hours</p>
+      </div>
+      `,
+    });
+
+    return res.status(200).send("Password reset link sent to email");
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Change an account password
+// @route   POST /api/user/reset-password/:token
+// @access  Public
+export const resetAccountPassword = async (req: Request, res: Response) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).send("Missing new password");
+    }
+
+    const token = await db.passwordResetToken.findUnique({
+      where: {
+        token: req.params.token,
+      },
+    });
+
+    if (!token) {
+      return res.status(400).send("Token expired or not valid");
+    }
+
+    if (
+      (new Date().getTime() - new Date(token.createdAt).getTime()) / (1000 * 3600) >
+      24
+    ) {
+      return res.status(400).send("Token expired or not valid");
+    }
+
+    const passwordRegex = /^(?=.*[a-zA-Z])(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+
+    if (!passwordRegex.test(password)) {
+      return res.status(422).send("Password does not meet security requirments");
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = await db.user.update({
+      where: {
+        id: token.userId,
+      },
+      data: {
+        hashedPassword,
+      },
+      select: {
+        id: true,
+        fullname: true,
+        avatarUrl: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    await db.passwordResetToken.update({
+      where: {
+        id: token.id,
+      },
+      data: {
+        resetAt: new Date(),
+      },
+    });
+
+    return res.status(200).json(user);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
 
 // @desc    Activate an account
 // @route   POST /api/activate/:token
@@ -139,9 +278,9 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
 // @access  Public
 export const registerUser = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { fullname, email, password } = req.body;
 
-    if (!email || !password) {
+    if (!fullname || !email || !password) {
       return res.status(400).send("Missing required fields");
     }
 
@@ -171,11 +310,13 @@ export const registerUser = async (req: Request, res: Response) => {
 
     const newUser = await db.user.create({
       data: {
+        fullname,
         email,
         hashedPassword,
       },
       select: {
         id: true,
+        fullname: true,
         email: true,
         createdAt: true,
         updatedAt: true,
@@ -196,26 +337,26 @@ export const registerUser = async (req: Request, res: Response) => {
       },
     });
 
-    // const url = req.headers.origin;
+    const url = req.headers.origin;
 
-    // const activateUrl = `${url}/activate/${authToken.token}`;
+    const activateUrl = `${url}/activate/${authToken.token}`;
 
-    // await sendMail({
-    //   subject: "Verify your Post Room account email",
-    //   email: newUser.email,
-    //   html: `
-    //   <div>
-    //     <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 1rem;">Verify your email to start using Post Room</h1>
-    //     <a href=${activateUrl} target="_blank" style="background-color: #0072dd; font-size: 14px; color: #ffffff; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem; text-decoration: none;">
-    //       Verify Your Email
-    //     </a>
-    //     <div style="margin-top: 5rem;">
-    //       <h2 style="font-size: 14px; margin-bottom: 1rem;">If you can't see the button, Use this link instead:</h2>
-    //       <a href=${activateUrl} target="_blank" style="color: #0072dd;">${activateUrl}</a>
-    //     </div>
-    //   </div>
-    //   `,
-    // });
+    await sendMail({
+      subject: "Verify your Penwwws account email",
+      email: newUser.email,
+      html: `
+      <div>
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 1rem;">Verify your email to start using Penwwws</h1>
+        <a href=${activateUrl} target="_blank" style="background-color: #0072dd; font-size: 14px; color: #ffffff; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem; text-decoration: none;">
+          Verify Your Email
+        </a>
+        <div style="margin-top: 5rem;">
+          <h2 style="font-size: 14px; margin-bottom: 1rem;">If you can't see the button, Use this link instead:</h2>
+          <a href=${activateUrl} target="_blank" style="color: #0072dd;">${activateUrl}</a>
+        </div>
+      </div>
+      `,
+    });
 
     const token = await generateToken(newUser.id);
 
@@ -255,8 +396,8 @@ export const loginUser = async (req: Request, res: Response) => {
       return res.status(400).send("Incorrect email or password");
     }
 
-    if (user.provider != "DEFAULT" || !user.hashedPassword) {
-      return res.status(400).send("Account signed up using a provider");
+    if (!user.hashedPassword) {
+      return res.status(400).send("Incorrect email or password");
     }
 
     const passwordMatch = await bcrypt.compare(password, user.hashedPassword);

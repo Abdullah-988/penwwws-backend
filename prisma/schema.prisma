@@ -23,7 +23,9 @@ model User {
   provider             AccountType   @default(DEFAULT)
 
   activateTokens       ActivateToken[]
+  passwordResetTokens  PasswordResetToken[]
   schools              MemberOnSchools[]
+  subjects             TeacherOnSubject[]
 
   createdAt            DateTime      @default(now()) 
   updatedAt            DateTime      @updatedAt
@@ -45,31 +47,42 @@ model ActivateToken {
   updatedAt       DateTime  @updatedAt
 }
 
+model PasswordResetToken {
+  id              Int       @id @default(autoincrement())
+  token           String    @unique
+  resetAt         DateTime?
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
 model School {
   id              Int       @id @default(autoincrement())
   name            String
-  logoUrl         String
-  description     String
+  logoUrl         String?
+  description     String?
 
   members         MemberOnSchools[]
+  subjects        Subject[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
 
 model MemberOnSchools {
-  id              Int       @id @default(autoincrement())
-  role            Role      @default(STUDENT)
-
   userId          Int
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   schoolId        Int
   school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
+  role            Role      @default(STUDENT)
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  @@unique([userId, schoolId])
+  @@id([userId, schoolId])
 }
 
 enum Role {
@@ -77,4 +90,41 @@ enum Role {
   ADMIN
   TEACHER
   STUDENT
+}
+
+model Subject {
+  id              Int       @id @default(autoincrement())
+  name            String
+  imageUrl        String?
+
+  schoolId        Int
+  school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  teachers        TeacherOnSubject[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model TeacherOnSubject {
+  subjectId       Int
+  subject         Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId       Int
+  teacher         User   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@id([subjectId, teacherId])
+}
+
+
+model Group {
+  id              Int       @id @default(autoincrement())
+  name            String
+
+  parentId        Int?
+  parent          Group?    @relation("GroupToGroup", fields: [parentId], references: [id], onDelete: Cascade)
+
+  children        Group[]   @relation("GroupToGroup")
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
