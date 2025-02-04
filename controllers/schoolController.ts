@@ -36,27 +36,6 @@ export const createSchool = async (req: Request, res: Response) => {
 // @access  Private
 export const getSchool = async (req: Request, res: Response) => {
   try {
-    const schools = await db.memberOnSchools.findMany({
-      where: {
-        userId: req.user.id,
-      },
-      select: {
-        school: true,
-      },
-    });
-
-    return res.status(200).json(schools);
-  } catch (error: any) {
-    console.log(error.message);
-    return res.status(500).send({ message: error.message });
-  }
-};
-
-// @desc    Get joined and created schools
-// @route   GET /api/school
-// @access  Private
-export const getSchools = async (req: Request, res: Response) => {
-  try {
     const isSchoolMember = await db.memberOnSchools.findFirst({
       where: {
         userId: req.user.id,
@@ -68,13 +47,34 @@ export const getSchools = async (req: Request, res: Response) => {
       return res.status(404).send("Not Found");
     }
 
-    const school = await db.school.findFirst({
+    const school = await db.school.findUnique({
       where: {
         id: Number(req.params.id),
       },
     });
 
     return res.status(200).json(school);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get joined and created schools
+// @route   GET /api/school
+// @access  Private
+export const getSchools = async (req: Request, res: Response) => {
+  try {
+    const schools = await db.memberOnSchools.findMany({
+      where: {
+        userId: req.user.id,
+      },
+      select: {
+        school: true,
+      },
+    });
+
+    return res.status(200).json(schools);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });

@@ -9,6 +9,9 @@
     "build": "tsc",
     "dev": "nodemon --files index.ts"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/bun": "latest",
