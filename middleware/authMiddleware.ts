@@ -24,7 +24,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         },
         select: {
           id: true,
-          fullname: true,
+          fullName: true,
           avatarUrl: true,
           email: true,
           isEmailVerified: true,

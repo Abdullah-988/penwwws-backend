@@ -121,7 +121,7 @@ export const resetAccountPassword = async (req: Request, res: Response) => {
       },
       select: {
         id: true,
-        fullname: true,
+        fullName: true,
         avatarUrl: true,
         email: true,
         createdAt: true,
@@ -180,7 +180,7 @@ export const activateAccount = async (req: Request, res: Response) => {
       },
       select: {
         id: true,
-        fullname: true,
+        fullName: true,
         email: true,
         createdAt: true,
         updatedAt: true,
@@ -223,7 +223,7 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
         },
         select: {
           id: true,
-          fullname: true,
+          fullName: true,
           email: true,
           provider: true,
           createdAt: true,
@@ -241,6 +241,7 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
 
       const newUser = await db.user.create({
         data: {
+          fullName: userRes.data.name,
           email: userRes.data.email,
           provider: "GOOGLE",
           isEmailVerified: true,
@@ -248,7 +249,7 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
         select: {
           id: true,
           email: true,
-          fullname: true,
+          fullName: true,
           provider: true,
           createdAt: true,
           updatedAt: true,
@@ -278,9 +279,9 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
 // @access  Public
 export const registerUser = async (req: Request, res: Response) => {
   try {
-    const { fullname, email, password } = req.body;
+    const { fullName, email, password } = req.body;
 
-    if (!fullname || !email || !password) {
+    if (!fullName || !email || !password) {
       return res.status(400).send("Missing required fields");
     }
 
@@ -310,13 +311,13 @@ export const registerUser = async (req: Request, res: Response) => {
 
     const newUser = await db.user.create({
       data: {
-        fullname,
+        fullName,
         email,
         hashedPassword,
       },
       select: {
         id: true,
-        fullname: true,
+        fullName: true,
         email: true,
         createdAt: true,
         updatedAt: true,
@@ -412,7 +413,7 @@ export const loginUser = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       id: user.id,
-      fullname: user.fullname,
+      fullName: user.fullName,
       email: user.email,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

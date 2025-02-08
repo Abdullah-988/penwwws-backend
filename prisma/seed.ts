@@ -9,7 +9,7 @@ async function main() {
 
   const admin = await db.user.create({
     data: {
-      fullname: "Admin User",
+      fullName: "Admin User",
       email: "admin@user.com",
       isEmailVerified: true,
       hashedPassword,
@@ -18,7 +18,7 @@ async function main() {
 
   const student = await db.user.create({
     data: {
-      fullname: "Student User",
+      fullName: "Student User",
       email: "student@user.com",
       isEmailVerified: true,
       hashedPassword,
@@ -27,7 +27,7 @@ async function main() {
 
   const teacher = await db.user.create({
     data: {
-      fullname: "Teacher User",
+      fullName: "Teacher User",
       email: "teacher@user.com",
       isEmailVerified: true,
       hashedPassword,
