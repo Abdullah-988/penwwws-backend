@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
+import { Subject } from "@prisma/client";
 
 // @desc    Create a school
 // @route   POST /api/school
@@ -36,20 +37,19 @@ export const createSchool = async (req: Request, res: Response) => {
 // @access  Private
 export const getSchool = async (req: Request, res: Response) => {
   try {
-    const isSchoolMember = await db.memberOnSchools.findFirst({
-      where: {
-        userId: req.user.id,
-        schoolId: Number(req.params.id),
-      },
-    });
-
-    if (!isSchoolMember) {
-      return res.status(404).send("Not Found");
-    }
-
     const school = await db.school.findUnique({
       where: {
-        id: Number(req.params.id),
+        id: req.params.id,
+      },
+      include: {
+        members: {
+          where: {
+            userId: req.user.id,
+          },
+          select: {
+            role: true,
+          },
+        },
       },
     });
 
@@ -70,7 +70,18 @@ export const getSchools = async (req: Request, res: Response) => {
         userId: req.user.id,
       },
       select: {
-        school: true,
+        school: {
+          include: {
+            members: {
+              where: {
+                userId: req.user.id,
+              },
+              select: {
+                role: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -92,33 +103,78 @@ export const createSubject = async (req: Request, res: Response) => {
       return res.status(400).send("Missing required fields");
     }
 
-    const isSchoolAdmin = await db.memberOnSchools.findFirst({
-      where: {
-        userId: req.user.id,
-        schoolId: Number(req.params.id),
-        OR: [
-          {
-            role: {
-              equals: "SUPER_ADMIN",
-            },
-          },
-          { role: { equals: "ADMIN" } },
-        ],
-      },
-    });
-
-    if (!isSchoolAdmin) {
-      return res.status(403).send("Forbidden");
-    }
-
     const subject = await db.subject.create({
       data: {
         name,
-        schoolId: Number(req.params.id),
+        schoolId: req.params.id,
       },
     });
 
     return res.status(201).json(subject);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get subjects
+// @route   GET /api/school/:id/subject
+// @access  Private
+export const getSubjects = async (req: Request, res: Response) => {
+  try {
+    let subjects: Subject[] = [];
+
+    if (req.user.isAdmin) {
+      subjects = await db.subject.findMany({
+        where: {
+          schoolId: req.params.id,
+        },
+      });
+    } else {
+      const subjectsNotFiltered = await db.memberOnSubject.findMany({
+        where: {
+          schoolId: req.params.id,
+          userId: req.user.id,
+        },
+        include: {
+          subject: true,
+        },
+      });
+
+      subjects = subjectsNotFiltered.map((subject) => subject.subject);
+    }
+
+    return res.status(200).json(subjects);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get a subject
+// @route   GET /api/school/:id/subject/:subjectId
+// @access  Private
+export const getSubject = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && !isSubjectMember) {
+      return res.status(404).send("Not Found");
+    }
+
+    const subject = await db.subject.findUnique({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+    });
+
+    return res.status(200).json(subject);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });

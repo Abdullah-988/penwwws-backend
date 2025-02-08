@@ -26,7 +26,8 @@ model User {
   activateTokens       ActivateToken[]
   passwordResetTokens  PasswordResetToken[]
   schools              MemberOnSchools[]
-  subjects             TeacherOnSubject[]
+  subjects             MemberOnSubject[]
+  groups               MemberOnGroup[]
 
   createdAt            DateTime      @default(now()) 
   updatedAt            DateTime      @updatedAt
@@ -60,22 +61,24 @@ model PasswordResetToken {
 }
 
 model School {
-  id              Int       @id @default(autoincrement())
-  name            String
-  logoUrl         String?
-  description     String?
+  id                String       @id @default(cuid())
+  name              String
+  logoUrl           String?
+  description       String?
 
-  members         MemberOnSchools[]
-  subjects        Subject[]
+  members           MemberOnSchools[]
+  subjects          Subject[]
+  membersOnSubject  MemberOnSubject[]
+  groups            Group[]
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model MemberOnSchools {
   userId          Int
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  schoolId        Int
+  schoolId        String
   school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   role            Role      @default(STUDENT)
@@ -84,6 +87,7 @@ model MemberOnSchools {
   updatedAt       DateTime  @updatedAt
 
   @@id([userId, schoolId])
+  @@unique([userId, schoolId])
 }
 
 enum Role {
@@ -98,24 +102,33 @@ model Subject {
   name            String
   imageUrl        String?
 
-  schoolId        Int
+  schoolId        String
   school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
-  teachers        TeacherOnSubject[]
+  users           MemberOnSubject[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
 
-model TeacherOnSubject {
+model MemberOnSubject {
   subjectId       Int
-  subject         Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  teacherId       Int
-  teacher         User   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject         Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  userId          Int
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            SubjectRole   @default(STUDENT)
 
-  @@id([subjectId, teacherId])
+  schoolId        String
+  school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@id([subjectId, userId])
+  @@unique([subjectId, userId])
 }
 
+enum SubjectRole {
+  TEACHER
+  STUDENT
+}
 
 model Group {
   id              Int       @id @default(autoincrement())
@@ -126,6 +139,21 @@ model Group {
 
   children        Group[]   @relation("GroupToGroup")
 
+  schoolId        String
+  school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  members         MemberOnGroup[]
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+model MemberOnGroup {
+  groupId         Int
+  group           Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId          Int
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@unique([groupId, userId])
 }
