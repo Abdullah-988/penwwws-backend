@@ -34,7 +34,7 @@ async function main() {
     },
   });
 
-  const school = await db.school.create({
+  await db.school.create({
     data: {
       name: "My School",
       members: {
@@ -46,7 +46,7 @@ async function main() {
             },
             {
               userId: teacher.id,
-              role: "STUDENT",
+              role: "TEACHER",
             },
             {
               userId: student.id,
