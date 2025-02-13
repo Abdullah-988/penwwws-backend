@@ -429,12 +429,12 @@ export const loginUser = async (req: Request, res: Response) => {
 // @access  Private
 export const getUser = async (req: Request, res: Response) => {
   try {
-    const { id, avatarUrl, fullname, email, createdAt, updatedAt } = req.user;
+    const { id, avatarUrl, fullName, email, createdAt, updatedAt } = req.user;
 
     return res.status(200).json({
       id,
       avatarUrl,
-      fullname,
+      fullName,
       email,
       createdAt,
       updatedAt,

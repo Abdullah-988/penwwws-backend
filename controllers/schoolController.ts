@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
-import { Subject } from "@prisma/client";
+import { Role, Subject } from "@prisma/client";
 
 // @desc    Create a school
 // @route   POST /api/school
@@ -37,7 +37,24 @@ export const createSchool = async (req: Request, res: Response) => {
 // @access  Private
 export const getSchool = async (req: Request, res: Response) => {
   try {
-    const school = await db.school.findUnique({
+    let count;
+    if (req.user.isAdmin) {
+      count = {
+        _count: {
+          select: {
+            members: {
+              where: {
+                role: "STUDENT" as Role,
+              },
+            },
+            subjects: true,
+          },
+        },
+      };
+    }
+
+    let school;
+    school = await db.school.findUnique({
       where: {
         id: req.params.id,
       },
@@ -50,8 +67,22 @@ export const getSchool = async (req: Request, res: Response) => {
             role: true,
           },
         },
+        ...count,
       },
     });
+
+    if (req.user.isAdmin && !!school) {
+      const { _count, ...rest } = school;
+      const { members, ...restCount } = _count;
+
+      school = {
+        ...rest,
+        _count: {
+          ...restCount,
+          students: school._count.members,
+        },
+      };
+    }
 
     return res.status(200).json(school);
   } catch (error: any) {
