@@ -42,11 +42,6 @@ export const getSchool = async (req: Request, res: Response) => {
       count = {
         _count: {
           select: {
-            members: {
-              where: {
-                role: "STUDENT" as Role,
-              },
-            },
             subjects: true,
           },
         },
@@ -73,13 +68,22 @@ export const getSchool = async (req: Request, res: Response) => {
 
     if (req.user.isAdmin && !!school) {
       const { _count, ...rest } = school;
-      const { members, ...restCount } = _count;
+
+      const allMembers = await db.memberOnSchools.findMany({
+        where: {
+          schoolId: req.params.id,
+        },
+        select: {
+          role: true,
+        },
+      });
 
       school = {
         ...rest,
         _count: {
-          ...restCount,
-          students: school._count.members,
+          ..._count,
+          students: allMembers.filter((member) => member.role == Role.STUDENT).length,
+          teachers: allMembers.filter((member) => member.role == Role.TEACHER).length,
         },
       };
     }
