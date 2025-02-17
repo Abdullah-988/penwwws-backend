@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
-import { Role, Subject } from "@prisma/client";
+import { Role } from "@prisma/client";
 
 // @desc    Create a school
 // @route   POST /api/school
@@ -157,13 +157,43 @@ export const createSubject = async (req: Request, res: Response) => {
 // @access  Private
 export const getSubjects = async (req: Request, res: Response) => {
   try {
-    let subjects: Subject[] = [];
+    let subjects = [];
 
     if (req.user.isAdmin) {
       subjects = await db.subject.findMany({
         where: {
           schoolId: req.params.id,
         },
+        include: {
+          users: {
+            where: {
+              role: Role.TEACHER,
+            },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  avatarUrl: true,
+                  fullName: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      subjects = subjects.map((subject) => {
+        const { users, ...rest } = subject;
+
+        return {
+          ...rest,
+          teachers: subject.users.map((teacher) => {
+            return {
+              ...teacher.user,
+            };
+          }),
+        };
       });
     } else {
       const subjectsNotFiltered = await db.memberOnSubject.findMany({
@@ -171,12 +201,47 @@ export const getSubjects = async (req: Request, res: Response) => {
           schoolId: req.params.id,
           userId: req.user.id,
         },
-        include: {
-          subject: true,
+        select: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              imageUrl: true,
+              schoolId: true,
+              createdAt: true,
+              updatedAt: true,
+              users: {
+                where: {
+                  role: Role.TEACHER,
+                },
+                select: {
+                  user: {
+                    select: {
+                      id: true,
+                      avatarUrl: true,
+                      fullName: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
 
-      subjects = subjectsNotFiltered.map((subject) => subject.subject);
+      subjects = subjectsNotFiltered.map((subject) => {
+        const { users, ...rest } = subject.subject;
+
+        return {
+          ...rest,
+          teachers: subject.subject.users.map((teacher) => {
+            return {
+              ...teacher.user,
+            };
+          }),
+        };
+      });
     }
 
     return res.status(200).json(subjects);
@@ -204,6 +269,115 @@ export const getSubject = async (req: Request, res: Response) => {
     }
 
     const subject = await db.subject.findUnique({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+      include: {
+        users: {
+          where: {
+            role: Role.TEACHER,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                avatarUrl: true,
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!subject) {
+      return res.status(404).send("Not Found");
+    }
+
+    const { users, ...rest } = subject;
+
+    const filteredSubject = {
+      ...rest,
+      teachers: subject.users.map((teacher) => {
+        return {
+          ...teacher.user,
+        };
+      }),
+    };
+
+    return res.status(200).json(filteredSubject);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Edit a subject
+// @route   PUT /api/school/:id/subject/:subjectId
+// @access  Private
+export const editSubject = async (req: Request, res: Response) => {
+  try {
+    const isSubjectOwnedBySchool = await db.subject.findUnique({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+    });
+
+    if (isSubjectOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name, imageUrl } = req.body;
+
+    let subjectName = isSubjectOwnedBySchool.name;
+    let subjectImageUrl = isSubjectOwnedBySchool.imageUrl;
+
+    if (!name && !imageUrl && imageUrl != null) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (!!name) {
+      subjectName = name;
+    }
+
+    if (!!imageUrl || imageUrl == null) {
+      subjectImageUrl = imageUrl;
+    }
+
+    const subject = await db.subject.update({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+      data: {
+        name: subjectName,
+        imageUrl: subjectImageUrl,
+      },
+    });
+
+    return res.status(200).json(subject);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a subject
+// @route   DELETE /api/school/:id/subject/:subjectId
+// @access  Private
+export const deleteSubject = async (req: Request, res: Response) => {
+  try {
+    const isSubjectOwnedBySchool = await db.subject.findUnique({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+    });
+
+    if (isSubjectOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const subject = await db.subject.delete({
       where: {
         id: Number(req.params.subjectId),
       },

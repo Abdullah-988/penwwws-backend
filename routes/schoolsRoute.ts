@@ -2,6 +2,8 @@ import express from "express";
 import {
   createSchool,
   createSubject,
+  editSubject,
+  deleteSubject,
   getMembers,
   getSchool,
   getSchools,
@@ -21,6 +23,8 @@ router.get("/school/:id", protect, access, getSchool);
 router.post("/school/:id/subject", protect, admin, createSubject);
 router.get("/school/:id/subject", protect, access, getSubjects);
 router.get("/school/:id/subject/:subjectId", protect, access, getSubject);
+router.put("/school/:id/subject/:subjectId", protect, admin, editSubject);
+router.delete("/school/:id/subject/:subjectId", protect, admin, deleteSubject);
 
 router.get("/school/:id/member", protect, admin, getMembers);
 
