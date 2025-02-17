@@ -215,3 +215,42 @@ export const getSubject = async (req: Request, res: Response) => {
     return res.status(500).send({ message: error.message });
   }
 };
+
+// @desc    Get members
+// @route   GET /api/school/:id/member
+// @access  Private
+export const getMembers = async (req: Request, res: Response) => {
+  try {
+    const members = await db.memberOnSchools.findMany({
+      where: {
+        schoolId: req.params.id,
+        NOT: {
+          userId: req.user.id,
+        },
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        role: true,
+      },
+    });
+
+    const filteredMembers = members.map((member) => {
+      return {
+        ...member.user,
+        role: member.role,
+      };
+    });
+
+    return res.status(200).json(filteredMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
