@@ -428,3 +428,300 @@ export const getMembers = async (req: Request, res: Response) => {
     return res.status(500).send({ message: error.message });
   }
 };
+
+// @desc    Get all groups
+// @route   GET /api/school/:id/group
+// @access  Private
+export const getGroups = async (req: Request, res: Response) => {
+  try {
+    const groups = await db.group.findMany({
+      where: {
+        schoolId: req.params.id,
+      },
+    });
+
+    return res.status(200).json(groups);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Create a group
+// @route   POST /api/school/:id/group
+// @access  Private
+export const createGroup = async (req: Request, res: Response) => {
+  try {
+    const { name, parentId } = req.body;
+
+    if (!name) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const group = await db.group.create({
+      data: {
+        name,
+        parentId,
+        schoolId: req.params.id,
+      },
+    });
+
+    return res.status(201).json(group);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Edit a group
+// @route   PUT /api/school/:id/group/:groupId
+// @access  Private
+export const editGroup = async (req: Request, res: Response) => {
+  try {
+    const isGroupOwnedBySchool = await db.group.findUnique({
+      where: {
+        id: Number(req.params.groupId),
+      },
+    });
+
+    if (isGroupOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name, parentId } = req.body;
+
+    if (!name && !parentId && parentId != null) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    let groupName = isGroupOwnedBySchool.name;
+    let groupParentId = isGroupOwnedBySchool.parentId;
+
+    if (!!name) {
+      groupName = name;
+    }
+
+    if (!!parentId || parentId == null) {
+      groupParentId = parentId;
+    }
+
+    const group = await db.group.update({
+      where: {
+        id: Number(req.params.groupId),
+      },
+      data: {
+        name: groupName,
+        parentId: groupParentId,
+      },
+    });
+
+    return res.status(200).json(group);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get a group
+// @route   GET /api/school/:id/group/:groupId
+// @access  Private
+export const getGroup = async (req: Request, res: Response) => {
+  try {
+    const group = await db.group.findUnique({
+      where: {
+        id: Number(req.params.groupId),
+      },
+      include: {
+        members: {
+          select: {
+            user: {
+              select: {
+                id: true,
+                avatarUrl: true,
+                fullName: true,
+                email: true,
+                schools: {
+                  where: {
+                    schoolId: req.params.id,
+                  },
+                  select: {
+                    role: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (group?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const filteredMembers = group.members.map((member) => {
+      const { schools, ...rest } = member.user;
+
+      return {
+        ...rest,
+        role: member.user.schools[0].role,
+      };
+    });
+
+    const { members, ...rest } = group;
+
+    return res.status(200).json({ ...rest, members: filteredMembers });
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a group
+// @route   DELETE /api/school/:id/group/:groupId
+// @access  Private
+export const deleteGroup = async (req: Request, res: Response) => {
+  try {
+    const isGroupOwnedBySchool = await db.group.findUnique({
+      where: {
+        id: Number(req.params.groupId),
+      },
+    });
+
+    if (isGroupOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const group = await db.group.delete({
+      where: {
+        id: Number(req.params.groupId),
+      },
+    });
+
+    return res.status(200).json(group);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Assign members to a group
+// @route   POST /api/school/:id/group/:groupId/member
+// @access  Private
+export const assignToGroup = async (req: Request, res: Response) => {
+  try {
+    const isGroupOwnedBySchool = await db.group.findUnique({
+      where: {
+        id: Number(req.params.groupId),
+      },
+    });
+
+    if (isGroupOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { userIds } = req.body;
+
+    if (!userIds) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (!Array.isArray(userIds) || userIds.some((id) => typeof id !== "number")) {
+      return res.status(400).send("Invalid user ids");
+    }
+
+    const schoolMembers = await db.memberOnSchools.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        schoolId: req.params.id,
+      },
+    });
+
+    if (schoolMembers.length != userIds.length) {
+      return res.status(404).send("User not found");
+    }
+
+    const groupMembers = await db.memberOnGroup.createMany({
+      data: userIds.map((userId) => {
+        return {
+          userId,
+          groupId: Number(req.params.groupId),
+        };
+      }),
+    });
+
+    return res.status(200).json(groupMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Un Assign members from a group
+// @route   DELETE /api/school/:id/group/:groupId/member
+// @access  Private
+export const unAssignFromGroup = async (req: Request, res: Response) => {
+  try {
+    const isGroupOwnedBySchool = await db.group.findUnique({
+      where: {
+        id: Number(req.params.groupId),
+      },
+    });
+
+    if (isGroupOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { userIds } = req.body;
+
+    if (!userIds) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (!Array.isArray(userIds) || userIds.some((id) => typeof id !== "number")) {
+      return res.status(400).send("Invalid user ids");
+    }
+
+    const schoolMembers = await db.memberOnSchools.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        schoolId: req.params.id,
+      },
+    });
+
+    if (schoolMembers.length != userIds.length) {
+      return res.status(404).send("User not found");
+    }
+
+    const groupMembers = await db.memberOnGroup.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        groupId: Number(req.params.groupId),
+      },
+    });
+
+    if (groupMembers.length != userIds.length) {
+      return res.status(400).send("User is not in that group");
+    }
+
+    const deletedGroupMembers = await db.memberOnGroup.deleteMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        groupId: Number(req.params.groupId),
+      },
+    });
+
+    return res.status(200).json(deletedGroupMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
