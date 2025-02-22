@@ -438,6 +438,13 @@ export const getGroups = async (req: Request, res: Response) => {
       where: {
         schoolId: req.params.id,
       },
+      include: {
+        _count: {
+          select: {
+            members: true,
+          },
+        },
+      },
     });
 
     return res.status(200).json(groups);

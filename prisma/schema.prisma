@@ -87,6 +87,7 @@ model MemberOnSchools {
   updatedAt       DateTime  @updatedAt
 
   @@id([userId, schoolId])
+  @@unique([userId, schoolId])
 }
 
 enum Role {
