@@ -1,6 +1,142 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
-import { Role } from "@prisma/client";
+import { Role, SubjectRole } from "@prisma/client";
+import { sendMail } from "../lib/nodemailer";
+
+// @desc    Invite a user by email
+// @route   POST /api/school/:id/invite
+// @access  Private
+export const inviteUser = async (req: Request, res: Response) => {
+  try {
+    const { email, role } = req.body;
+
+    if (!email || !role) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (
+      role.toLowerCase() != "student" &&
+      role.toLowerCase() != "teacher" &&
+      role.toLowerCase() != "admin"
+    ) {
+      return res.status(400).send("Invalid role name");
+    }
+
+    const doesUserExist = await db.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!doesUserExist) {
+      return res.status(404).send("User not found");
+    }
+
+    const isUserInSchool = await db.memberOnSchools.findFirst({
+      where: {
+        userId: doesUserExist.id,
+        schoolId: req.params.id,
+      },
+    });
+
+    if (isUserInSchool) {
+      return res.status(400).send("User is already in school");
+    }
+
+    const inviteTokenString =
+      crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+
+    const invite = await db.inviteToken.create({
+      data: {
+        token: inviteTokenString,
+        userId: doesUserExist.id,
+        schoolId: req.params.id,
+        role: role.toUpperCase(),
+      },
+      include: {
+        school: true,
+      },
+    });
+
+    if (!invite) {
+      return res.status(500).send("There is an error while handling your request");
+    }
+
+    const url = req.headers.origin;
+
+    const invitetUrl = `${url}/invite/${invite.token}`;
+
+    await sendMail({
+      subject: "Penwwws school invitation",
+      email: doesUserExist.email,
+      html: `
+      <div>
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 1rem;">You've been invited to <span style="font-weight: 700;">${invite.school.name}</span></h1>
+        <a href=${invitetUrl} target="_blank" style="background-color: #0072dd; font-size: 14px; color: #ffffff; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem; text-decoration: none;">
+          Accept Invitation
+        </a>
+        <div style="margin-top: 5rem;">
+          <h2 style="font-size: 14px; margin-bottom: 1rem;">If you can't see the button, Use this link instead:</h2>
+          <a href=${invitetUrl} target="_blank" style="color: #0072dd;">${invitetUrl}</a>
+        </div>
+        <p style="margin-top: 1rem;">This link will expire in 24 hours</p>
+      </div>
+      `,
+    });
+
+    return res.status(200).send("Password reset link sent to email");
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Accept invitation
+// @route   POST /api/invite/:inviteToken
+// @access  Private
+export const acceptInvitation = async (req: Request, res: Response) => {
+  try {
+    const inviteToken = req.params.inviteToken;
+
+    const doesInviteExist = await db.inviteToken.findUnique({
+      where: {
+        token: inviteToken,
+      },
+    });
+
+    if (!doesInviteExist) {
+      return res.status(404).send("Invite not found");
+    }
+
+    if (doesInviteExist.userId != req.user.id) {
+      return res.status(400).send("You are not authorized to accept this invite");
+    }
+
+    const isUserInSchool = await db.memberOnSchools.findFirst({
+      where: {
+        userId: doesInviteExist.userId,
+        schoolId: doesInviteExist.schoolId,
+      },
+    });
+
+    if (!!isUserInSchool) {
+      return res.status(400).send("You are already in this school");
+    }
+
+    const user = await db.memberOnSchools.create({
+      data: {
+        userId: req.user.id,
+        schoolId: doesInviteExist.schoolId,
+        role: doesInviteExist.role,
+      },
+    });
+
+    return res.status(200).send(user);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
 
 // @desc    Create a school
 // @route   POST /api/school
@@ -214,7 +350,7 @@ export const getSubjects = async (req: Request, res: Response) => {
                 where: {
                   role: Role.TEACHER,
                 },
-                select: {
+                include: {
                   user: {
                     select: {
                       id: true,
@@ -274,9 +410,6 @@ export const getSubject = async (req: Request, res: Response) => {
       },
       include: {
         users: {
-          where: {
-            role: Role.TEACHER,
-          },
           include: {
             user: {
               select: {
@@ -299,9 +432,10 @@ export const getSubject = async (req: Request, res: Response) => {
 
     const filteredSubject = {
       ...rest,
-      teachers: subject.users.map((teacher) => {
+      users: subject.users.map((user) => {
         return {
-          ...teacher.user,
+          ...user.user,
+          role: user.role,
         };
       }),
     };
@@ -390,6 +524,150 @@ export const deleteSubject = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Assign members to a subject
+// @route   POST /api/school/:id/subject/:subjectId/member
+// @access  Private
+export const assignToSubject = async (req: Request, res: Response) => {
+  try {
+    const isSubjectOwnedBySchool = await db.subject.findUnique({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+    });
+
+    if (isSubjectOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { userIds, as } = req.body;
+
+    if (!userIds || !as) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (!Array.isArray(userIds) || userIds.some((id) => typeof id !== "number")) {
+      return res.status(400).send("Invalid user ids");
+    }
+
+    if (as.toLowerCase() != "student" && as.toLowerCase() != "teacher") {
+      return res.status(400).send("Invalid user role");
+    }
+
+    let acceptedRoles: Role[] = [Role.STUDENT];
+    if (as.toLowerCase() == "teacher") {
+      const roles = [Role.TEACHER, Role.SUPER_ADMIN, Role.ADMIN];
+      acceptedRoles = roles;
+    }
+
+    const schoolMembers = await db.memberOnSchools.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        role: {
+          in: acceptedRoles,
+        },
+        schoolId: req.params.id,
+      },
+    });
+
+    if (schoolMembers.length != userIds.length) {
+      return res.status(404).send("User not found");
+    }
+
+    const alreadySubjectMembers = await db.memberOnSubject.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        subjectId: Number(req.params.subjectId),
+        schoolId: req.params.id,
+      },
+    });
+
+    const userIdsWithoutAlreadyAssigned = userIds.filter(
+      (userId) => !alreadySubjectMembers.some((member) => member.userId == userId)
+    );
+
+    console.log(userIdsWithoutAlreadyAssigned);
+
+    const subjectMembers = await db.memberOnSubject.createMany({
+      data: userIdsWithoutAlreadyAssigned.map((userId) => {
+        return {
+          userId,
+          schoolId: req.params.id,
+          subjectId: Number(req.params.subjectId),
+          role: as.toLowerCase() == "student" ? SubjectRole.STUDENT : SubjectRole.TEACHER,
+        };
+      }),
+    });
+
+    return res.status(200).json(subjectMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Un Assign members from a subject
+// @route   DELETE /api/school/:id/subject/:subjectId/member
+// @access  Private
+export const unAssignFromSubject = async (req: Request, res: Response) => {
+  try {
+    const isSubjectOwnedBySchool = await db.subject.findUnique({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+    });
+
+    if (isSubjectOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { userIds } = req.body;
+
+    if (!userIds) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (!Array.isArray(userIds) || userIds.some((id) => typeof id !== "number")) {
+      return res.status(400).send("Invalid user ids");
+    }
+
+    const subjectMembers = await db.memberOnSubject.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        subjectId: Number(req.params.subjectId),
+        schoolId: req.params.id,
+      },
+    });
+
+    if (subjectMembers.length != userIds.length) {
+      return res
+        .status(404)
+        .send(
+          "A user or some users provided are not assigned in that subject or not found"
+        );
+    }
+
+    const deletedSubjectMembers = await db.memberOnSubject.deleteMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    return res.status(200).json(deletedSubjectMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // @desc    Get members
 // @route   GET /api/school/:id/member
 // @access  Private
@@ -448,6 +726,113 @@ export const getGroups = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json(groups);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get all group members
+// @route   GET /api/school/:id/group/:groupId/member
+// @access  Private
+export const getGroupMembers = async (req: Request, res: Response) => {
+  try {
+    const group = await db.group.findUnique({
+      where: {
+        id: Number(req.params.groupId),
+      },
+      include: {
+        members: {
+          select: {
+            user: {
+              select: {
+                id: true,
+                avatarUrl: true,
+                fullName: true,
+                email: true,
+                schools: {
+                  where: {
+                    schoolId: req.params.id,
+                  },
+                  select: {
+                    role: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (group?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    let members: any[] = [];
+    async function getGroupMembers(groupId: number) {
+      const childGroups = await db.group.findMany({
+        where: {
+          parentId: groupId,
+        },
+        include: {
+          members: {
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  avatarUrl: true,
+                  fullName: true,
+                  email: true,
+                  schools: {
+                    where: {
+                      schoolId: req.params.id,
+                    },
+                    select: {
+                      role: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const group of childGroups) {
+        group.members.forEach((member) => {
+          const isUserInArray = members.find((m) => m.id == member.user.id);
+
+          if (isUserInArray) {
+            return;
+          }
+
+          const { schools, ...rest } = member.user;
+
+          const role = member.user.schools[0]?.role || null;
+
+          members.push({ ...rest, role });
+        });
+        await getGroupMembers(group.id);
+      }
+    }
+
+    await group?.members.forEach((member) => {
+      const { schools, ...rest } = member.user;
+
+      const role = member.user.schools[0]?.role || null;
+
+      members.push({ ...rest, role });
+    });
+
+    await getGroupMembers(Number(req.params.groupId));
+
+    const response = {
+      ...group,
+      members,
+    };
+
+    return res.status(200).json(response);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
