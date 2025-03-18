@@ -687,6 +687,17 @@ export const getMembers = async (req: Request, res: Response) => {
             avatarUrl: true,
             fullName: true,
             email: true,
+            groups: {
+              select: {
+                group: {
+                  select: {
+                    id: true,
+                    name: true,
+                    parentId: true,
+                  },
+                },
+              },
+            },
           },
         },
         role: true,
@@ -697,6 +708,11 @@ export const getMembers = async (req: Request, res: Response) => {
       return {
         ...member.user,
         role: member.role,
+        groups: member.user.groups.map((group) => {
+          return {
+            ...group.group,
+          };
+        }),
       };
     });
 
