@@ -21,6 +21,9 @@ import {
   inviteUser,
   acceptInvitation,
   unAssignFromSubject,
+  deleteSchool,
+  removeFromSchool,
+  editSchool,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -31,6 +34,9 @@ const router = express.Router();
 router.post("/school", protect, createSchool);
 router.get("/school", protect, getSchools);
 router.get("/school/:id", protect, access, getSchool);
+router.put("/school/:id", protect, admin, editSchool);
+router.delete("/school/:id", protect, access, deleteSchool);
+router.delete("/school/:id/member", protect, admin, removeFromSchool);
 router.post("/school/:id/invite", protect, admin, inviteUser);
 router.post("/invite/:inviteToken", protect, acceptInvitation);
 

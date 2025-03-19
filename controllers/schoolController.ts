@@ -138,6 +138,52 @@ export const acceptInvitation = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Remove members from a school
+// @route   DELETE /api/school/:id/member
+// @access  Private
+export const removeFromSchool = async (req: Request, res: Response) => {
+  try {
+    const { userIds } = req.body;
+
+    if (!userIds) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (!Array.isArray(userIds) || userIds.some((id) => typeof id !== "number")) {
+      return res.status(400).send("Invalid user ids");
+    }
+
+    const schoolMembers = await db.memberOnSchools.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        schoolId: req.params.id,
+      },
+    });
+
+    if (schoolMembers.length != userIds.length) {
+      return res
+        .status(404)
+        .send("A user or some users provided are not in that school or not found");
+    }
+
+    const removedSchoolMembers = await db.memberOnSchools.deleteMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        schoolId: req.params.id,
+      },
+    });
+
+    return res.status(200).json(removedSchoolMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // @desc    Create a school
 // @route   POST /api/school
 // @access  Private
@@ -162,6 +208,34 @@ export const createSchool = async (req: Request, res: Response) => {
     });
 
     return res.status(201).json(school);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Edit school information
+// @route   PUT /api/school/:id
+// @access  Private
+export const editSchool = async (req: Request, res: Response) => {
+  try {
+    const { name, description } = req.body;
+
+    if (!name || !description) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const school = await db.school.update({
+      where: {
+        id: req.params.id,
+      },
+      data: {
+        name,
+        description,
+      },
+    });
+
+    return res.status(200).json(school);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
@@ -223,6 +297,28 @@ export const getSchool = async (req: Request, res: Response) => {
         },
       };
     }
+
+    return res.status(200).json(school);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a school
+// @route   DELETE /api/school/:id
+// @access  Private
+export const deleteSchool = async (req: Request, res: Response) => {
+  try {
+    if (req.user.role != "SUPER_ADMIN") {
+      return res.status(403).send("Forbidden");
+    }
+
+    const school = await db.school.delete({
+      where: {
+        id: req.params.id,
+      },
+    });
 
     return res.status(200).json(school);
   } catch (error: any) {
@@ -781,6 +877,10 @@ export const getGroupMembers = async (req: Request, res: Response) => {
       },
     });
 
+    if (!group) {
+      return res.status(404).send("Group not found");
+    }
+
     if (group?.schoolId != req.params.id) {
       return res.status(403).send("Forbidden");
     }
@@ -1051,8 +1151,21 @@ export const assignToGroup = async (req: Request, res: Response) => {
       return res.status(404).send("User not found");
     }
 
+    const membersAlreadyInGroup = await db.memberOnGroup.findMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        groupId: Number(req.params.groupId),
+      },
+    });
+
+    const userIdsWithoutAlreadyAssigned = userIds.filter(
+      (userId) => !membersAlreadyInGroup.some((member) => member.userId == userId)
+    );
+
     const groupMembers = await db.memberOnGroup.createMany({
-      data: userIds.map((userId) => {
+      data: userIdsWithoutAlreadyAssigned.map((userId) => {
         return {
           userId,
           groupId: Number(req.params.groupId),
