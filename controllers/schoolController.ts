@@ -528,6 +528,7 @@ export const getSubject = async (req: Request, res: Response) => {
 
     const filteredSubject = {
       ...rest,
+      role: req.user.role,
       users: subject.users.map((user) => {
         return {
           ...user.user,
@@ -1013,6 +1014,50 @@ export const editGroup = async (req: Request, res: Response) => {
       groupParentId = parentId;
     }
 
+    // If the parent group is changed, check if the new parent group is a child of the group
+    if (parentId != null && parentId != isGroupOwnedBySchool.parentId) {
+      const childGroupIds: number[] = [];
+      let isNewParentGroupChild = false;
+
+      async function checkParentGroupChild(groupId: number) {
+        const childGroups = await db.group.findMany({
+          where: {
+            parentId: groupId,
+          },
+        });
+
+        for (const group of childGroups) {
+          // Save the first generation child group ids
+          if (group.parentId == isGroupOwnedBySchool?.id) {
+            childGroupIds.push(group.id);
+          }
+
+          // Check if the new parent group is a child of the group
+          if (group.id == parentId) {
+            isNewParentGroupChild = true;
+          }
+
+          await checkParentGroupChild(group.id);
+        }
+      }
+
+      await checkParentGroupChild(isGroupOwnedBySchool.id);
+
+      // If the new parent group is a child of the group, remove the children groups relationship
+      if (isNewParentGroupChild) {
+        await db.group.updateMany({
+          where: {
+            id: {
+              in: childGroupIds,
+            },
+          },
+          data: {
+            parentId: null,
+          },
+        });
+      }
+    }
+
     const group = await db.group.update({
       where: {
         id: Number(req.params.groupId),
@@ -1151,26 +1196,39 @@ export const assignToGroup = async (req: Request, res: Response) => {
       return res.status(404).send("User not found");
     }
 
-    const membersAlreadyInGroup = await db.memberOnGroup.findMany({
-      where: {
-        userId: {
-          in: userIds,
-        },
-        groupId: Number(req.params.groupId),
-      },
-    });
+    // get all group parents and parents of parents ids
+    const groupParents: number[] = [];
+    groupParents.push(isGroupOwnedBySchool.id);
 
-    const userIdsWithoutAlreadyAssigned = userIds.filter(
-      (userId) => !membersAlreadyInGroup.some((member) => member.userId == userId)
+    async function getGroupParents(groupId: number) {
+      const group = await db.group.findUnique({
+        where: {
+          id: groupId,
+        },
+      });
+
+      if (!group) {
+        return;
+      }
+
+      groupParents.push(group?.id);
+
+      if (!!group?.parentId) {
+        await getGroupParents(group.parentId);
+      }
+    }
+
+    if (!!isGroupOwnedBySchool.parentId) {
+      await getGroupParents(isGroupOwnedBySchool.parentId);
+    }
+
+    const data = userIds.flatMap((userId) =>
+      groupParents.map((groupId) => ({ userId, groupId }))
     );
 
     const groupMembers = await db.memberOnGroup.createMany({
-      data: userIdsWithoutAlreadyAssigned.map((userId) => {
-        return {
-          userId,
-          groupId: Number(req.params.groupId),
-        };
-      }),
+      data,
+      skipDuplicates: true,
     });
 
     return res.status(200).json(groupMembers);
