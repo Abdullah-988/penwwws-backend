@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
-import { Role, SubjectRole } from "@prisma/client";
+import { Group, Role, SubjectRole } from "@prisma/client";
 import axios from "axios";
+import { group } from "console";
 
 // @desc    Create an invitation link
 // @route   POST /api/school/:id/invite
@@ -163,6 +164,9 @@ export const getAdmissions = async (req: Request, res: Response) => {
             email: true,
           },
         },
+      },
+      orderBy: {
+        createdAt: "desc",
       },
     });
 
@@ -648,6 +652,17 @@ export const getSubject = async (req: Request, res: Response) => {
                 avatarUrl: true,
                 fullName: true,
                 email: true,
+                groups: {
+                  select: {
+                    group: {
+                      select: {
+                        id: true,
+                        name: true,
+                        parentId: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -665,10 +680,24 @@ export const getSubject = async (req: Request, res: Response) => {
       ...rest,
       role: req.user.role,
       users: subject.users.map((user) => {
-        return {
-          ...user.user,
+        const { groups, ...rest } = user.user;
+
+        const data = {
+          ...rest,
           role: user.role,
         };
+
+        if (req.user.isAdmin || isSubjectMember?.role == SubjectRole.TEACHER) {
+          Object.assign(data, {
+            groups: user.user.groups.map((group) => {
+              return {
+                ...group.group,
+              };
+            }),
+          });
+        }
+
+        return data;
       }),
     };
 
