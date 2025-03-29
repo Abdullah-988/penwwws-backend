@@ -24,6 +24,10 @@ import {
   deleteSchool,
   removeFromSchool,
   editSchool,
+  getAdmissions,
+  admissionReview,
+  getInvitationTokens,
+  deleteInvitationToken,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -39,6 +43,10 @@ router.delete("/school/:id", protect, access, deleteSchool);
 router.delete("/school/:id/member", protect, admin, removeFromSchool);
 router.post("/school/:id/invite", protect, admin, inviteUser);
 router.post("/invite/:inviteToken", protect, acceptInvitation);
+router.get("/school/:id/invitation", protect, admin, getInvitationTokens);
+router.get("/school/:id/admission", protect, admin, getAdmissions);
+router.post("/school/:id/admission/:admissionId/review", protect, admin, admissionReview);
+router.delete("/school/:id/invitation/:tokenId", protect, admin, deleteInvitationToken);
 
 router.post("/school/:id/subject", protect, admin, createSubject);
 router.get("/school/:id/subject", protect, access, getSubjects);

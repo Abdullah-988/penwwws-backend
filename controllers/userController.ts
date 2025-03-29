@@ -241,6 +241,7 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
 
       const newUser = await db.user.create({
         data: {
+          avatarUrl: userRes.data.picture,
           fullName: userRes.data.name,
           email: userRes.data.email,
           provider: "GOOGLE",

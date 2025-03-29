@@ -28,7 +28,7 @@ model User {
   schools              MemberOnSchools[]
   subjects             MemberOnSubject[]
   groups               MemberOnGroup[]
-  invitations          InviteToken[]
+  admissions           InviteAdmission[]
 
   createdAt            DateTime      @default(now()) 
   updatedAt            DateTime      @updatedAt
@@ -53,14 +53,35 @@ model ActivateToken {
 model InviteToken {
   id              Int       @id @default(autoincrement())
   token           String    @unique
-  schoolId        String
   role            Role      @default(STUDENT)
+  schoolId        String
   school          School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  userId          Int
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+model InviteAdmission {
+  id              Int             @id @default(autoincrement())
+
+  token           String
+  status          AdmissionStatus @default(PENDING)
+  role            Role            @default(STUDENT)
+
+  schoolId        String
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  userId          Int
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+enum AdmissionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 model PasswordResetToken {
@@ -85,6 +106,8 @@ model School {
   membersOnSubject  MemberOnSubject[]
   groups            Group[]
   invites           InviteToken[]
+
+  admissions        InviteAdmission[]
 
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

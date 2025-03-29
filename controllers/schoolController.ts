@@ -1,16 +1,16 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
 import { Role, SubjectRole } from "@prisma/client";
-import { sendMail } from "../lib/nodemailer";
+import axios from "axios";
 
-// @desc    Invite a user by email
+// @desc    Create an invitation link
 // @route   POST /api/school/:id/invite
 // @access  Private
 export const inviteUser = async (req: Request, res: Response) => {
   try {
-    const { email, role } = req.body;
+    const { role } = req.body;
 
-    if (!email || !role) {
+    if (!role) {
       return res.status(400).send("Missing required fields");
     }
 
@@ -22,39 +22,14 @@ export const inviteUser = async (req: Request, res: Response) => {
       return res.status(400).send("Invalid role name");
     }
 
-    const doesUserExist = await db.user.findUnique({
-      where: {
-        email,
-      },
-    });
-
-    if (!doesUserExist) {
-      return res.status(404).send("User not found");
-    }
-
-    const isUserInSchool = await db.memberOnSchools.findFirst({
-      where: {
-        userId: doesUserExist.id,
-        schoolId: req.params.id,
-      },
-    });
-
-    if (isUserInSchool) {
-      return res.status(400).send("User is already in school");
-    }
-
     const inviteTokenString =
       crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 
     const invite = await db.inviteToken.create({
       data: {
         token: inviteTokenString,
-        userId: doesUserExist.id,
         schoolId: req.params.id,
         role: role.toUpperCase(),
-      },
-      include: {
-        school: true,
       },
     });
 
@@ -62,29 +37,53 @@ export const inviteUser = async (req: Request, res: Response) => {
       return res.status(500).send("There is an error while handling your request");
     }
 
-    const url = req.headers.origin;
+    return res.status(200).send(invite);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
 
-    const invitetUrl = `${url}/invite/${invite.token}`;
-
-    await sendMail({
-      subject: "Penwwws school invitation",
-      email: doesUserExist.email,
-      html: `
-      <div>
-        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 1rem;">You've been invited to <span style="font-weight: 700;">${invite.school.name}</span></h1>
-        <a href=${invitetUrl} target="_blank" style="background-color: #0072dd; font-size: 14px; color: #ffffff; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem; text-decoration: none;">
-          Accept Invitation
-        </a>
-        <div style="margin-top: 5rem;">
-          <h2 style="font-size: 14px; margin-bottom: 1rem;">If you can't see the button, Use this link instead:</h2>
-          <a href=${invitetUrl} target="_blank" style="color: #0072dd;">${invitetUrl}</a>
-        </div>
-        <p style="margin-top: 1rem;">This link will expire in 24 hours</p>
-      </div>
-      `,
+// @desc    Get created invitation tokens
+// @route   GET /api/school/:id/invitation
+// @access  Private
+export const getInvitationTokens = async (req: Request, res: Response) => {
+  try {
+    const invitations = await db.inviteToken.findMany({
+      where: {
+        schoolId: req.params.id,
+      },
     });
 
-    return res.status(200).send("Password reset link sent to email");
+    return res.status(200).send(invitations);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete an invitation token
+// @route   DELETE /api/school/:id/invitation/:tokenId
+// @access  Private
+export const deleteInvitationToken = async (req: Request, res: Response) => {
+  try {
+    const isTokenOwnedBySchool = await db.inviteToken.findUnique({
+      where: {
+        id: Number(req.params.tokenId),
+      },
+    });
+
+    if (isTokenOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const invitation = await db.inviteToken.delete({
+      where: {
+        id: Number(req.params.tokenId),
+      },
+    });
+
+    return res.status(200).send(invitation);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
@@ -105,33 +104,126 @@ export const acceptInvitation = async (req: Request, res: Response) => {
     });
 
     if (!doesInviteExist) {
-      return res.status(404).send("Invite not found");
-    }
-
-    if (doesInviteExist.userId != req.user.id) {
-      return res.status(400).send("You are not authorized to accept this invite");
+      return res.status(404).send("Invitation not found");
     }
 
     const isUserInSchool = await db.memberOnSchools.findFirst({
       where: {
-        userId: doesInviteExist.userId,
+        userId: req.user.id,
         schoolId: doesInviteExist.schoolId,
       },
     });
 
     if (!!isUserInSchool) {
-      return res.status(400).send("You are already in this school");
+      return res.status(403).send("You are already in this school");
     }
 
-    const user = await db.memberOnSchools.create({
+    const doesUserHaveAddmission = await db.inviteAdmission.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: doesInviteExist.schoolId,
+      },
+    });
+
+    if (!!doesUserHaveAddmission) {
+      return res.status(403).send("You already sent an admission request to this school");
+    }
+
+    const admission = await db.inviteAdmission.create({
       data: {
         userId: req.user.id,
+        token: doesInviteExist.token,
         schoolId: doesInviteExist.schoolId,
         role: doesInviteExist.role,
       },
     });
 
-    return res.status(200).send(user);
+    return res.status(200).send(admission);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get school invite admissions
+// @route   GET /api/school/:id/admission
+// @access  Private
+export const getAdmissions = async (req: Request, res: Response) => {
+  try {
+    const admissions = await db.inviteAdmission.findMany({
+      where: {
+        schoolId: req.params.id,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).send(admissions);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Approve or reject admission
+// @route   POST /api/school/:id/admission/:admissionId/review
+// @access  Private
+export const admissionReview = async (req: Request, res: Response) => {
+  try {
+    const isAdmissionOwnedBySchool = await db.inviteAdmission.findUnique({
+      where: {
+        id: Number(req.params.admissionId),
+      },
+    });
+
+    if (isAdmissionOwnedBySchool?.schoolId != req.params.id) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (status.toLowerCase() != "accept" && status.toLowerCase() != "reject") {
+      return res.status(400).send("Invalid status");
+    }
+
+    if (isAdmissionOwnedBySchool.status == "ACCEPTED") {
+      return res.status(400).send("User is already in this school");
+    }
+
+    const statusEnum = status.toLowerCase() == "accept" ? "ACCEPTED" : "REJECTED";
+
+    const admission = await db.inviteAdmission.update({
+      where: {
+        id: isAdmissionOwnedBySchool.id,
+      },
+      data: {
+        status: statusEnum,
+      },
+    });
+
+    if (status.toLowerCase() == "accept") {
+      await db.memberOnSchools.create({
+        data: {
+          userId: isAdmissionOwnedBySchool.userId,
+          schoolId: isAdmissionOwnedBySchool.schoolId,
+          role: isAdmissionOwnedBySchool.role,
+        },
+      });
+    }
+
+    return res.status(200).send(admission);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
@@ -219,10 +311,34 @@ export const createSchool = async (req: Request, res: Response) => {
 // @access  Private
 export const editSchool = async (req: Request, res: Response) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, logoPublicId } = req.body;
 
-    if (!name || !description) {
+    if (
+      !name ||
+      (!description && description != null) ||
+      (!logoPublicId && logoPublicId != null)
+    ) {
       return res.status(400).send("Missing required fields");
+    }
+
+    let logoUrl = null;
+
+    if (logoPublicId != null) {
+      try {
+        const cloudinaryRes = await axios.get(
+          `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload/${logoPublicId}`,
+          {
+            auth: {
+              username: process.env.CLOUDINARY_API_KEY || "",
+              password: process.env.CLOUDINARY_API_SECRET || "",
+            },
+          }
+        );
+
+        logoUrl = cloudinaryRes.data.url;
+      } catch {
+        return res.status(404).send("Logo not found in cloudinary");
+      }
     }
 
     const school = await db.school.update({
@@ -231,6 +347,7 @@ export const editSchool = async (req: Request, res: Response) => {
       },
       data: {
         name,
+        logoUrl,
         description,
       },
     });
@@ -352,7 +469,25 @@ export const getSchools = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(schools);
+    const pendingAdmissions = await db.inviteAdmission.findMany({
+      where: {
+        userId: req.user.id,
+        status: "PENDING",
+      },
+      include: {
+        school: true,
+      },
+    });
+
+    const filteredPendingAdmissions = pendingAdmissions.map((admission) => {
+      return {
+        school: admission.school,
+      };
+    });
+
+    const response = { joined: schools, pending: filteredPendingAdmissions };
+
+    return res.status(200).json(response);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
