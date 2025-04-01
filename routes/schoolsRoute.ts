@@ -28,6 +28,12 @@ import {
   admissionReview,
   getInvitationTokens,
   deleteInvitationToken,
+  createTopic,
+  editTopic,
+  deleteTopic,
+  addDocument,
+  editDocument,
+  deleteDocument,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -71,5 +77,33 @@ router.delete("/school/:id/group/:groupId", protect, admin, deleteGroup);
 router.get("/school/:id/group/:groupId/member", protect, admin, getGroupMembers);
 router.post("/school/:id/group/:groupId/member", protect, admin, assignToGroup);
 router.delete("/school/:id/group/:groupId/member", protect, admin, unAssignFromGroup);
+
+router.post("/school/:id/subject/:subjectId/topic", protect, access, createTopic);
+router.put("/school/:id/subject/:subjectId/topic/:topicId", protect, access, editTopic);
+router.delete(
+  "/school/:id/subject/:subjectId/topic/:topicId",
+  protect,
+  access,
+  deleteTopic
+);
+
+router.post(
+  "/school/:id/subject/:subjectId/topic/:topicId/document",
+  protect,
+  access,
+  addDocument
+);
+router.put(
+  "/school/:id/subject/:subjectId/topic/:topicId/document/:documentId",
+  protect,
+  access,
+  editDocument
+);
+router.delete(
+  "/school/:id/subject/:subjectId/topic/:topicId/document/:documentId",
+  protect,
+  access,
+  deleteDocument
+);
 
 export default router;

@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
-import { Group, Role, SubjectRole } from "@prisma/client";
+import { Role, SubjectRole } from "@prisma/client";
 import axios from "axios";
-import { group } from "console";
+import { generateSignature } from "../util/cloudinary";
 
 // @desc    Create an invitation link
 // @route   POST /api/school/:id/invite
@@ -123,6 +123,7 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       where: {
         userId: req.user.id,
         schoolId: doesInviteExist.schoolId,
+        status: "PENDING",
       },
     });
 
@@ -315,34 +316,37 @@ export const createSchool = async (req: Request, res: Response) => {
 // @access  Private
 export const editSchool = async (req: Request, res: Response) => {
   try {
-    const { name, description, logoPublicId } = req.body;
+    const { name, description, logoUrl } = req.body;
 
-    if (
-      !name ||
-      (!description && description != null) ||
-      (!logoPublicId && logoPublicId != null)
-    ) {
+    if (!name || (!description && description != null) || (!logoUrl && logoUrl != null)) {
       return res.status(400).send("Missing required fields");
     }
 
-    let logoUrl = null;
+    if (
+      !logoUrl.startsWith(
+        `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`
+      )
+    ) {
+      return res.status(400).send("Invalid file url");
+    }
 
-    if (logoPublicId != null) {
-      try {
-        const cloudinaryRes = await axios.get(
-          `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload/${logoPublicId}`,
-          {
-            auth: {
-              username: process.env.CLOUDINARY_API_KEY || "",
-              password: process.env.CLOUDINARY_API_SECRET || "",
-            },
-          }
-        );
+    let publicId = logoUrl.split("/").pop();
+    let url;
 
-        logoUrl = cloudinaryRes.data.url;
-      } catch {
-        return res.status(404).send("Logo not found in cloudinary");
-      }
+    try {
+      const cloudinaryRes = await axios.get(
+        `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload/${publicId}`,
+        {
+          auth: {
+            username: process.env.CLOUDINARY_API_KEY || "",
+            password: process.env.CLOUDINARY_API_SECRET || "",
+          },
+        }
+      );
+
+      url = cloudinaryRes.data.secure_url;
+    } catch {
+      return res.status(404).send("File not found in cloudinary");
     }
 
     const school = await db.school.update({
@@ -351,7 +355,7 @@ export const editSchool = async (req: Request, res: Response) => {
       },
       data: {
         name,
-        logoUrl,
+        logoUrl: url,
         description,
       },
     });
@@ -513,6 +517,11 @@ export const createSubject = async (req: Request, res: Response) => {
       data: {
         name,
         schoolId: req.params.id,
+        topics: {
+          create: {
+            name: "Topic 1",
+          },
+        },
       },
     });
 
@@ -923,6 +932,393 @@ export const unAssignFromSubject = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json(deletedSubjectMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Create a topic
+// @route   POST /api/school/:id/subject/:subjectId/topic
+// @access  Private
+export const createTopic = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (
+      !req.user.isAdmin &&
+      (!isSubjectMember || isSubjectMember?.role != SubjectRole.TEACHER)
+    ) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const topic = await db.topic.create({
+      data: {
+        name,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    return res.status(201).json(topic);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Edit a topic
+// @route   PUT /api/school/:id/subject/:subjectId/topic/:topicId
+// @access  Private
+export const editTopic = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isTopicOwnedBySubject = await db.topic.findUnique({
+      where: {
+        id: Number(req.params.topicId),
+      },
+    });
+
+    if (isTopicOwnedBySubject?.subjectId != Number(req.params.subjectId)) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const topic = await db.topic.update({
+      where: {
+        id: Number(req.params.topicId),
+      },
+      data: {
+        name,
+      },
+    });
+
+    return res.status(200).json(topic);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a topic
+// @route   DELETE /api/school/:id/subject/:subjectId/topic/:topicId
+// @access  Private
+export const deleteTopic = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isTopicOwnedBySubject = await db.topic.findUnique({
+      where: {
+        id: Number(req.params.topicId),
+      },
+    });
+
+    if (isTopicOwnedBySubject?.subjectId != Number(req.params.subjectId)) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const documents = await db.document.findMany({
+      where: {
+        topicId: Number(req.params.topicId),
+      },
+    });
+
+    for (const document of documents) {
+      try {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const publicId = document.publicId;
+
+        await axios.post(
+          `https://api.cloudinary.com/v1_1/${
+            process.env.CLOUDINARY_CLOUD_NAME
+          }/${document.type.toLowerCase()}/destroy`,
+          {
+            public_id: publicId,
+            api_key: process.env.CLOUDINARY_API_KEY,
+            timestamp,
+            signature: generateSignature(publicId, timestamp),
+          }
+        );
+      } catch {}
+    }
+
+    const topic = await db.topic.delete({
+      where: {
+        id: Number(req.params.topicId),
+      },
+    });
+
+    return res.status(200).json(topic);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Create an document
+// @route   POST /api/school/:id/subject/:subjectId/topic/:topicId/document
+// @access  Private
+export const addDocument = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isTopicOwnedBySubject = await db.topic.findUnique({
+      where: {
+        id: Number(req.params.topicId),
+      },
+    });
+
+    if (isTopicOwnedBySubject?.subjectId != Number(req.params.subjectId)) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name, url }: { name: string; url: string } = req.body;
+
+    if (!name || !url) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (
+      !url.startsWith(`https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`)
+    ) {
+      return res.status(400).send("Invalid file url");
+    }
+
+    const publicIdAndFormat = url.split("/").pop();
+
+    if (!publicIdAndFormat) {
+      return res.status(400).send("Invalid file url");
+    }
+
+    let resourceType: "IMAGE" | "VIDEO" | "RAW";
+    let publicId = publicIdAndFormat.split(".")[0];
+    let format = publicIdAndFormat.split(".")[1];
+
+    if (format == "png" || format == "jpg" || format == "jpeg") {
+      resourceType = "IMAGE";
+    } else if (
+      format == "mp4" ||
+      format == "webm" ||
+      format == "ogg" ||
+      format == "mov"
+    ) {
+      resourceType = "VIDEO";
+    } else {
+      resourceType = "RAW";
+      publicId = publicId + "." + format;
+    }
+
+    let public_url;
+    try {
+      const cloudinaryRes = await axios.get(
+        `https://api.cloudinary.com/v1_1/${
+          process.env.CLOUDINARY_CLOUD_NAME
+        }/resources/${resourceType.toLowerCase()}/upload/${publicId}`,
+        {
+          auth: {
+            username: process.env.CLOUDINARY_API_KEY || "",
+            password: process.env.CLOUDINARY_API_SECRET || "",
+          },
+        }
+      );
+
+      public_url = cloudinaryRes.data.secure_url;
+      format = cloudinaryRes.data.format;
+      resourceType = cloudinaryRes.data.resource_type.toUpperCase();
+      publicId = cloudinaryRes.data.public_id;
+
+      if (resourceType == "RAW") {
+        format = public_url.split("/").pop().split(".").pop();
+      }
+    } catch (error) {
+      return res.status(404).send(error);
+    }
+
+    const document = await db.document.create({
+      data: {
+        name,
+        url: public_url,
+        topicId: Number(req.params.topicId),
+        format,
+        type: resourceType,
+        publicId,
+      },
+    });
+
+    return res.status(201).json(document);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Edit a document
+// @route   PUT /api/school/:id/subject/:subjectId/topic/:topicId/document/:documentId
+// @access  Private
+export const editDocument = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isTopicOwnedBySubject = await db.topic.findUnique({
+      where: {
+        id: Number(req.params.topicId),
+      },
+    });
+
+    if (isTopicOwnedBySubject?.subjectId != Number(req.params.subjectId)) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const document = await db.document.findUnique({
+      where: {
+        id: Number(req.params.documentId),
+      },
+    });
+
+    if (document?.topicId != Number(req.params.topicId)) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const editedDocument = await db.document.update({
+      where: {
+        id: document.id,
+      },
+      data: {
+        name,
+      },
+    });
+
+    return res.status(200).json(editedDocument);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a document
+// @route   DELETE /api/school/:id/subject/:subjectId/topic/:topicId/document/:documentId
+// @access  Private
+export const deleteDocument = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isTopicOwnedBySubject = await db.topic.findUnique({
+      where: {
+        id: Number(req.params.topicId),
+      },
+    });
+
+    if (isTopicOwnedBySubject?.subjectId != Number(req.params.subjectId)) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const document = await db.document.findUnique({
+      where: {
+        id: Number(req.params.documentId),
+      },
+    });
+
+    if (document?.topicId != Number(req.params.topicId)) {
+      return res.status(403).send("Forbidden");
+    }
+
+    try {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const publicId = document.publicId;
+
+      await axios.post(
+        `https://api.cloudinary.com/v1_1/${
+          process.env.CLOUDINARY_CLOUD_NAME
+        }/${document.type.toLowerCase()}/destroy`,
+        {
+          public_id: publicId,
+          api_key: process.env.CLOUDINARY_API_KEY,
+          timestamp,
+          signature: generateSignature(publicId, timestamp),
+        }
+      );
+    } catch {}
+
+    const deletedDocument = await db.document.delete({
+      where: {
+        id: document.id,
+      },
+    });
+
+    return res.status(200).json(deletedDocument);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
