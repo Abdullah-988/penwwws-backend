@@ -1325,6 +1325,154 @@ export const deleteDocument = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Get all assignments
+// @route   GET /api/school/:id/subject/:subjectId/assignment
+// @access  Private
+export const getAssignments = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && !isSubjectMember) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const assignments = await db.assignment.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        document: {
+          omit: {
+            assignmentId: true,
+            submissionId: true,
+            topicId: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(assignments);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Create an assignment
+// @route   POST /api/school/:id/subject/:subjectId/assignment
+// @access  Private
+export const addAssignment = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { title, url, deadline }: { title: string; url: string; deadline: Date } =
+      req.body;
+
+    if (!title || !url || !deadline) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (
+      !url.startsWith(`https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`)
+    ) {
+      return res.status(400).send("Invalid file url");
+    }
+
+    const publicIdAndFormat = url.split("/").pop();
+
+    if (!publicIdAndFormat) {
+      return res.status(400).send("Invalid file url");
+    }
+
+    let resourceType: "IMAGE" | "VIDEO" | "RAW";
+    let publicId = publicIdAndFormat.split(".")[0];
+    let format = publicIdAndFormat.split(".")[1];
+
+    let fileName;
+
+    if (format == "png" || format == "jpg" || format == "jpeg") {
+      resourceType = "IMAGE";
+    } else if (
+      format == "mp4" ||
+      format == "webm" ||
+      format == "ogg" ||
+      format == "mov"
+    ) {
+      resourceType = "VIDEO";
+    } else {
+      resourceType = "RAW";
+      publicId = publicId + "." + format;
+    }
+
+    let public_url;
+    try {
+      const cloudinaryRes = await axios.get(
+        `https://api.cloudinary.com/v1_1/${
+          process.env.CLOUDINARY_CLOUD_NAME
+        }/resources/${resourceType.toLowerCase()}/upload/${publicId}`,
+        {
+          auth: {
+            username: process.env.CLOUDINARY_API_KEY || "",
+            password: process.env.CLOUDINARY_API_SECRET || "",
+          },
+        }
+      );
+
+      public_url = cloudinaryRes.data.secure_url;
+      format = cloudinaryRes.data.format;
+      resourceType = cloudinaryRes.data.resource_type.toUpperCase();
+      publicId = cloudinaryRes.data.public_id;
+      fileName = cloudinaryRes.data.display_name;
+
+      if (resourceType == "RAW") {
+        format = public_url.split("/").pop().split(".").pop();
+      }
+    } catch (error) {
+      return res.status(404).send(error);
+    }
+
+    const assignment = await db.assignment.create({
+      data: {
+        title,
+        deadline,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    const document = await db.document.create({
+      data: {
+        name: fileName,
+        url: public_url,
+        assignmentId: assignment.id,
+        format,
+        type: resourceType,
+        publicId,
+      },
+    });
+
+    return res.status(201).json({ ...assignment, document: document });
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // @desc    Get members
 // @route   GET /api/school/:id/member
 // @access  Private

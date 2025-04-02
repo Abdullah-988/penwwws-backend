@@ -34,6 +34,8 @@ import {
   addDocument,
   editDocument,
   deleteDocument,
+  addAssignment,
+  getAssignments,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -105,5 +107,7 @@ router.delete(
   access,
   deleteDocument
 );
+router.get("/school/:id/subject/:subjectId/assignment", protect, access, getAssignments);
+router.post("/school/:id/subject/:subjectId/assignment", protect, access, addAssignment);
 
 export default router;

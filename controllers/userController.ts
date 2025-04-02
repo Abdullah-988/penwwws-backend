@@ -446,6 +446,18 @@ export const getUser = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Get user data
+// @route   GET /api/me/:schoolId
+// @access  Private
+export const getSchoolUser = async (req: Request, res: Response) => {
+  try {
+    return res.status(200).json(req.user);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // Generate JWT
 const generateToken = async (id: number) => {
   return await jwt.sign({ id }, process.env.JWT_SECRET!, {
