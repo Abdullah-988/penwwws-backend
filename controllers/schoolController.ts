@@ -962,6 +962,9 @@ export const getTopics = async (req: Request, res: Response) => {
       include: {
         documents: true,
       },
+      orderBy: {
+        createdAt: "asc",
+      }
     });
 
     return res.status(200).json(topics);
