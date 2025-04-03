@@ -36,6 +36,7 @@ import {
   deleteDocument,
   addAssignment,
   getAssignments,
+  getTopics,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -80,6 +81,7 @@ router.get("/school/:id/group/:groupId/member", protect, admin, getGroupMembers)
 router.post("/school/:id/group/:groupId/member", protect, admin, assignToGroup);
 router.delete("/school/:id/group/:groupId/member", protect, admin, unAssignFromGroup);
 
+router.get("/school/:id/subject/:subjectId/topic", protect, access, getTopics);
 router.post("/school/:id/subject/:subjectId/topic", protect, access, createTopic);
 router.put("/school/:id/subject/:subjectId/topic/:topicId", protect, access, editTopic);
 router.delete(

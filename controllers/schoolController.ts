@@ -938,6 +938,39 @@ export const unAssignFromSubject = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Get all subject topics and their documents
+// @route   GET /api/school/:id/subject/:subjectId/topic
+// @access  Private
+export const getTopics = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && !isSubjectMember) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const topics = await db.topic.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        documents: true,
+      },
+    });
+
+    return res.status(200).json(topics);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // @desc    Create a topic
 // @route   POST /api/school/:id/subject/:subjectId/topic
 // @access  Private
