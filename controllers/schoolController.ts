@@ -336,7 +336,7 @@ export const editSchool = async (req: Request, res: Response) => {
         return res.status(400).send("Invalid file url");
       }
 
-      let publicId = logoUrl.split("/").pop();
+      let publicId = logoUrl.split("/").pop().split(".")[0];
 
       try {
         const cloudinaryRes = await axios.get(
