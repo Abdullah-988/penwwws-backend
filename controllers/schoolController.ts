@@ -318,35 +318,43 @@ export const editSchool = async (req: Request, res: Response) => {
   try {
     const { name, description, logoUrl } = req.body;
 
-    if (!name || (!description && description != null) || (!logoUrl && logoUrl != null)) {
+    if (
+      !name ||
+      (!description && description != null && description != "") ||
+      (!logoUrl && logoUrl != null && logoUrl != "")
+    ) {
       return res.status(400).send("Missing required fields");
     }
 
-    if (
-      !logoUrl.startsWith(
-        `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`
-      )
-    ) {
-      return res.status(400).send("Invalid file url");
-    }
-
-    let publicId = logoUrl.split("/").pop();
     let url;
+    if (logoUrl != "" && logoUrl != null) {
+      if (
+        !logoUrl.startsWith(
+          `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`
+        )
+      ) {
+        return res.status(400).send("Invalid file url");
+      }
 
-    try {
-      const cloudinaryRes = await axios.get(
-        `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload/${publicId}`,
-        {
-          auth: {
-            username: process.env.CLOUDINARY_API_KEY || "",
-            password: process.env.CLOUDINARY_API_SECRET || "",
-          },
-        }
-      );
+      let publicId = logoUrl.split("/").pop();
 
-      url = cloudinaryRes.data.secure_url;
-    } catch {
-      return res.status(404).send("File not found in cloudinary");
+      try {
+        const cloudinaryRes = await axios.get(
+          `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload/${publicId}`,
+          {
+            auth: {
+              username: process.env.CLOUDINARY_API_KEY || "",
+              password: process.env.CLOUDINARY_API_SECRET || "",
+            },
+          }
+        );
+
+        url = cloudinaryRes.data.secure_url;
+      } catch {
+        return res.status(404).send("File not found in cloudinary");
+      }
+    } else {
+      url = logoUrl;
     }
 
     const school = await db.school.update({
@@ -355,8 +363,8 @@ export const editSchool = async (req: Request, res: Response) => {
       },
       data: {
         name,
-        logoUrl: url,
-        description,
+        logoUrl: url == "" ? null : url,
+        description: description == "" ? null : description,
       },
     });
 
@@ -964,7 +972,7 @@ export const getTopics = async (req: Request, res: Response) => {
       },
       orderBy: {
         createdAt: "asc",
-      }
+      },
     });
 
     return res.status(200).json(topics);
@@ -1420,9 +1428,293 @@ export const addAssignment = async (req: Request, res: Response) => {
     const { title, url, deadline }: { title: string; url: string; deadline: Date } =
       req.body;
 
-    if (!title || !url || !deadline) {
+    if (!title || !deadline) {
       return res.status(400).send("Missing required fields");
     }
+
+    let resourceType: "IMAGE" | "VIDEO" | "RAW" = "IMAGE";
+    let publicId;
+    let format;
+
+    let fileName;
+    let public_url;
+
+    if (url) {
+      if (
+        !url.startsWith(
+          `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`
+        )
+      ) {
+        return res.status(400).send("Invalid file url");
+      }
+
+      const publicIdAndFormat = url.split("/").pop();
+
+      if (!publicIdAndFormat) {
+        return res.status(400).send("Invalid file url");
+      }
+
+      publicId = publicIdAndFormat.split(".")[0];
+      format = publicIdAndFormat.split(".")[1];
+
+      if (format == "png" || format == "jpg" || format == "jpeg") {
+        resourceType = "IMAGE";
+      } else if (
+        format == "mp4" ||
+        format == "webm" ||
+        format == "ogg" ||
+        format == "mov"
+      ) {
+        resourceType = "VIDEO";
+      } else {
+        resourceType = "RAW";
+        publicId = publicId + "." + format;
+      }
+
+      try {
+        const cloudinaryRes = await axios.get(
+          `https://api.cloudinary.com/v1_1/${
+            process.env.CLOUDINARY_CLOUD_NAME
+          }/resources/${resourceType.toLowerCase()}/upload/${publicId}`,
+          {
+            auth: {
+              username: process.env.CLOUDINARY_API_KEY || "",
+              password: process.env.CLOUDINARY_API_SECRET || "",
+            },
+          }
+        );
+
+        public_url = cloudinaryRes.data.secure_url;
+        format = cloudinaryRes.data.format;
+        resourceType = cloudinaryRes.data.resource_type.toUpperCase();
+        publicId = cloudinaryRes.data.public_id;
+        fileName = cloudinaryRes.data.display_name;
+
+        if (resourceType == "RAW") {
+          format = public_url.split("/").pop().split(".").pop();
+        }
+      } catch (error) {
+        return res.status(404).send(error);
+      }
+    }
+
+    const assignment = await db.assignment.create({
+      data: {
+        title,
+        deadline,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    let document;
+    if (url) {
+      document = await db.document.create({
+        data: {
+          name: fileName,
+          url: public_url,
+          assignmentId: assignment.id,
+          format,
+          type: resourceType,
+          publicId,
+        },
+      });
+    }
+
+    const response = !document ? assignment : { ...assignment, document: document };
+
+    return res.status(201).json(response);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete an assignment
+// @route   DELETE /api/school/:id/subject/:subjectId/assignment/:assignmentId
+// @access  Private
+export const deleteAssignment = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isAssignmentOwnedBySubject = await db.assignment.findFirst({
+      where: {
+        id: Number(req.params.assignmentId),
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        document: true,
+      },
+    });
+
+    const documents = [];
+    documents.push(isAssignmentOwnedBySubject?.document);
+
+    if (!isAssignmentOwnedBySubject) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const submissions = await db.submission.findMany({
+      where: {
+        assignmentId: Number(req.params.assignmentId),
+      },
+      include: {
+        document: true,
+      },
+    });
+
+    documents.push(...submissions.map((submission) => submission.document));
+
+    for (const document of documents) {
+      try {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const publicId = document?.publicId || "";
+
+        await axios.post(
+          `https://api.cloudinary.com/v1_1/${
+            process.env.CLOUDINARY_CLOUD_NAME
+          }/${document?.type.toLowerCase()}/destroy`,
+          {
+            public_id: publicId,
+            api_key: process.env.CLOUDINARY_API_KEY,
+            timestamp,
+            signature: generateSignature(publicId, timestamp),
+          }
+        );
+      } catch {}
+    }
+
+    const deletedAssignment = await db.assignment.delete({
+      where: {
+        id: Number(req.params.assignmentId),
+      },
+    });
+
+    return res.status(200).json(deletedAssignment);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get all assignments submissions
+// @route   GET /api/school/:id/subject/:subjectId/assignment/:assignmentId/submission
+// @access  Private
+export const getAssignmentSubmissions = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isAssignmentOwnedBySubject = await db.assignment.findFirst({
+      where: {
+        id: Number(req.params.assignmentId),
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!isAssignmentOwnedBySubject) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const submissions = await db.submission.findMany({
+      where: {
+        assignmentId: Number(req.params.assignmentId),
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        document: {
+          omit: {
+            assignmentId: true,
+            submissionId: true,
+            topicId: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(submissions);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Add a submission to an assignment
+// @route   POST /api/school/:id/subject/:subjectId/assignment/:assignmentId/submission
+// @access  Private
+export const addAssignmentSubmission = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && !isSubjectMember) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isAssignmentOwnedBySubject = await db.assignment.findFirst({
+      where: {
+        id: Number(req.params.assignmentId),
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!isAssignmentOwnedBySubject) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const didUserAlreadySubmit = await db.submission.findFirst({
+      where: {
+        studentId: req.user.id,
+        assignmentId: Number(req.params.assignmentId),
+      },
+    });
+
+    if (!!didUserAlreadySubmit) {
+      return res.status(400).send("You already submitted to this assignment");
+    }
+
+    const { url }: { url: string } = req.body;
+
+    if (!url) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    let resourceType: "IMAGE" | "VIDEO" | "RAW" = "IMAGE";
+    let publicId;
+    let format;
+
+    let fileName;
+    let public_url;
 
     if (
       !url.startsWith(`https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`)
@@ -1436,11 +1728,8 @@ export const addAssignment = async (req: Request, res: Response) => {
       return res.status(400).send("Invalid file url");
     }
 
-    let resourceType: "IMAGE" | "VIDEO" | "RAW";
-    let publicId = publicIdAndFormat.split(".")[0];
-    let format = publicIdAndFormat.split(".")[1];
-
-    let fileName;
+    publicId = publicIdAndFormat.split(".")[0];
+    format = publicIdAndFormat.split(".")[1];
 
     if (format == "png" || format == "jpg" || format == "jpeg") {
       resourceType = "IMAGE";
@@ -1456,7 +1745,6 @@ export const addAssignment = async (req: Request, res: Response) => {
       publicId = publicId + "." + format;
     }
 
-    let public_url;
     try {
       const cloudinaryRes = await axios.get(
         `https://api.cloudinary.com/v1_1/${
@@ -1480,29 +1768,101 @@ export const addAssignment = async (req: Request, res: Response) => {
         format = public_url.split("/").pop().split(".").pop();
       }
     } catch (error) {
-      return res.status(404).send(error);
+      return res.status(404).send("File not found");
     }
 
-    const assignment = await db.assignment.create({
+    const submission = await db.submission.create({
       data: {
-        title,
-        deadline,
+        studentId: req.user.id,
+        assignmentId: Number(req.params.assignmentId),
+        document: {
+          create: {
+            name: fileName,
+            url: public_url,
+            format,
+            type: resourceType,
+            publicId,
+          },
+        },
+      },
+      include: {
+        document: true,
+      },
+    });
+
+    return res.status(201).json(submission);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete an assignment submission
+// @route   DELETE /api/school/:id/subject/:subjectId/assignment/:assignmentId/submission/:submissionId
+// @access  Private
+export const deleteAssignmentSubmission = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
         subjectId: Number(req.params.subjectId),
       },
     });
 
-    const document = await db.document.create({
-      data: {
-        name: fileName,
-        url: public_url,
-        assignmentId: assignment.id,
-        format,
-        type: resourceType,
-        publicId,
+    if (!req.user.isAdmin && !isSubjectMember) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isAssignmentOwnedBySubject = await db.assignment.findFirst({
+      where: {
+        id: Number(req.params.assignmentId),
+        subjectId: Number(req.params.subjectId),
       },
     });
 
-    return res.status(201).json({ ...assignment, document: document });
+    if (!isAssignmentOwnedBySubject) {
+      return res.status(403).send("Forbidden");
+    }
+    const submission = await db.submission.findFirst({
+      where: {
+        id: Number(req.params.submissionId),
+        studentId: req.user.id,
+        assignmentId: Number(req.params.assignmentId),
+      },
+      include: {
+        document: true,
+      },
+    });
+
+    if (!submission) {
+      return res.status(403).send("Forbidden");
+    }
+
+    try {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const publicId = submission.document?.publicId || "";
+
+      await axios.post(
+        `https://api.cloudinary.com/v1_1/${
+          process.env.CLOUDINARY_CLOUD_NAME
+        }/${submission.document?.type.toLowerCase()}/destroy`,
+        {
+          public_id: publicId,
+          api_key: process.env.CLOUDINARY_API_KEY,
+          timestamp,
+          signature: generateSignature(publicId, timestamp),
+        }
+      );
+    } catch {}
+
+    const deletedSubmission = await db.submission.delete({
+      where: {
+        id: Number(req.params.submissionId),
+      },
+    });
+
+    return res.status(200).json(deletedSubmission);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });

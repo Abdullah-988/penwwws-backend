@@ -37,6 +37,10 @@ import {
   addAssignment,
   getAssignments,
   getTopics,
+  addAssignmentSubmission,
+  getAssignmentSubmissions,
+  deleteAssignmentSubmission,
+  deleteAssignment,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -111,5 +115,29 @@ router.delete(
 );
 router.get("/school/:id/subject/:subjectId/assignment", protect, access, getAssignments);
 router.post("/school/:id/subject/:subjectId/assignment", protect, access, addAssignment);
+router.get(
+  "/school/:id/subject/:subjectId/assignment/:assignmentId/submission",
+  protect,
+  access,
+  getAssignmentSubmissions
+);
+router.post(
+  "/school/:id/subject/:subjectId/assignment/:assignmentId/submission",
+  protect,
+  access,
+  addAssignmentSubmission
+);
+router.delete(
+  "/school/:id/subject/:subjectId/assignment/:assignmentId",
+  protect,
+  access,
+  deleteAssignment
+);
+router.delete(
+  "/school/:id/subject/:subjectId/assignment/:assignmentId/submission/:submissionId",
+  protect,
+  access,
+  deleteAssignmentSubmission
+);
 
 export default router;
