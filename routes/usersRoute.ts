@@ -8,6 +8,7 @@ import {
   resetPasswordRequest,
   resetAccountPassword,
   getSchoolUser,
+  editUser,
 } from "../controllers/userController";
 import { protect } from "../middleware/authMiddleware";
 import { access } from "../middleware/accessMiddleware";
@@ -23,6 +24,7 @@ router.post("/user/reset-password/:token", resetAccountPassword);
 
 router.post("/activate/:token", activateAccount);
 router.get("/me", protect, getUser);
+router.put("/me", protect, editUser);
 router.get("/me/:schoolId", protect, access, getSchoolUser);
 
 export default router;

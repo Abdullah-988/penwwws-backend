@@ -30,6 +30,7 @@ model User {
   groups               MemberOnGroup[]
   admissions           InviteAdmission[]
   submissions          Submission[]
+  marks                MarkOnRow[]
 
   createdAt            DateTime      @default(now()) 
   updatedAt            DateTime      @updatedAt
@@ -147,6 +148,7 @@ model Subject {
   users           MemberOnSubject[]
   topics          Topic[]
   assignments     Assignment[]
+  marksTable      MarksTableRow[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -268,4 +270,35 @@ model MemberOnGroup {
 
   @@id([groupId, userId])
   @@unique([groupId, userId])
+}
+
+model MarksTableRow {
+  id              Int       @id @default(autoincrement())
+  name            String
+  max             Float
+  count           Boolean
+
+  subjectId       Int
+  subject         Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  marks           MarkOnRow[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model MarkOnRow {
+  id              Int       @id @default(autoincrement())
+  value           Float
+
+  tableRowId      Int
+  row             MarksTableRow   @relation(fields: [tableRowId], references: [id], onDelete: Cascade)
+
+  studentId       Int
+  student         User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tableRowId, studentId])
 }

@@ -41,6 +41,14 @@ import {
   getAssignmentSubmissions,
   deleteAssignmentSubmission,
   deleteAssignment,
+  editAssignment,
+  addMarksTableRow,
+  getMarksTableRows,
+  editMarksTableRow,
+  deleteMarksTableRow,
+  getStudentMarksTable,
+  addMarksToStudentTable,
+  getGrade,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -115,6 +123,12 @@ router.delete(
 );
 router.get("/school/:id/subject/:subjectId/assignment", protect, access, getAssignments);
 router.post("/school/:id/subject/:subjectId/assignment", protect, access, addAssignment);
+router.put(
+  "/school/:id/subject/:subjectId/assignment/:assignmentId",
+  protect,
+  access,
+  editAssignment
+);
 router.get(
   "/school/:id/subject/:subjectId/assignment/:assignmentId/submission",
   protect,
@@ -139,5 +153,33 @@ router.delete(
   access,
   deleteAssignmentSubmission
 );
+
+router.get("/school/:id/subject/:subjectId/table", protect, access, getMarksTableRows);
+router.post("/school/:id/subject/:subjectId/table", protect, access, addMarksTableRow);
+router.put(
+  "/school/:id/subject/:subjectId/table/:rowId",
+  protect,
+  access,
+  editMarksTableRow
+);
+router.delete(
+  "/school/:id/subject/:subjectId/table/:rowId",
+  protect,
+  access,
+  deleteMarksTableRow
+);
+router.get(
+  "/school/:id/subject/:subjectId/table/student/:studentId",
+  protect,
+  access,
+  getStudentMarksTable
+);
+router.post(
+  "/school/:id/subject/:subjectId/table/student/:studentId",
+  protect,
+  access,
+  addMarksToStudentTable
+);
+router.get("/school/:id/subject/:subjectId/grade", protect, access, getGrade);
 
 export default router;

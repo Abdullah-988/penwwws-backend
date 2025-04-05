@@ -286,6 +286,10 @@ export const registerUser = async (req: Request, res: Response) => {
       return res.status(400).send("Missing required fields");
     }
 
+    if (fullName.length < 3 || fullName.length > 50) {
+      return res.status(400).send("Full name must be between 3 and 50 characters");
+    }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(email)) {
@@ -312,7 +316,7 @@ export const registerUser = async (req: Request, res: Response) => {
 
     const newUser = await db.user.create({
       data: {
-        fullName,
+        fullName: fullName.trim(),
         email,
         hashedPassword,
       },
@@ -440,6 +444,76 @@ export const getUser = async (req: Request, res: Response) => {
       createdAt,
       updatedAt,
     });
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+// @desc    Edit user data
+// @route   PUT /api/me
+// @access  Private
+export const editUser = async (req: Request, res: Response) => {
+  try {
+    const { fullName, avatarUrl } = req.body;
+
+    if (!fullName || (avatarUrl != "" && avatarUrl != null && !avatarUrl)) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (fullName.length < 3 || fullName.length > 50) {
+      return res.status(400).send("Full name must be between 3 and 50 characters");
+    }
+
+    let url;
+    if (avatarUrl != "" && avatarUrl != null) {
+      if (
+        !avatarUrl.startsWith(
+          `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`
+        )
+      ) {
+        return res.status(400).send("Invalid file url");
+      }
+
+      let publicId = avatarUrl.split("/").pop().split(".")[0];
+
+      try {
+        const cloudinaryRes = await axios.get(
+          `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/resources/image/upload/${publicId}`,
+          {
+            auth: {
+              username: process.env.CLOUDINARY_API_KEY || "",
+              password: process.env.CLOUDINARY_API_SECRET || "",
+            },
+          }
+        );
+
+        url = cloudinaryRes.data.secure_url;
+      } catch {
+        return res.status(404).send("Image not found in cloudinary");
+      }
+    } else {
+      url = avatarUrl;
+    }
+
+    const user = await db.user.update({
+      where: {
+        id: req.user.id,
+      },
+      data: {
+        fullName: fullName.trim(),
+        avatarUrl: url == "" ? null : url,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        avatarUrl: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return res.status(200).json(user);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });

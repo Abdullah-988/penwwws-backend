@@ -968,7 +968,11 @@ export const getTopics = async (req: Request, res: Response) => {
         subjectId: Number(req.params.subjectId),
       },
       include: {
-        documents: true,
+        documents: {
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
       },
       orderBy: {
         createdAt: "asc",
@@ -1280,9 +1284,9 @@ export const editDocument = async (req: Request, res: Response) => {
       return res.status(403).send("Forbidden");
     }
 
-    const { name } = req.body;
+    const { name, topicId } = req.body;
 
-    if (!name) {
+    if (!name || !topicId) {
       return res.status(400).send("Missing required fields");
     }
 
@@ -1292,6 +1296,7 @@ export const editDocument = async (req: Request, res: Response) => {
       },
       data: {
         name,
+        topicId,
       },
     });
 
@@ -1386,6 +1391,18 @@ export const getAssignments = async (req: Request, res: Response) => {
       return res.status(403).send("Forbidden");
     }
 
+    let count = {};
+
+    if (isSubjectMember?.role == SubjectRole.TEACHER || req.user.isAdmin) {
+      count = {
+        _count: {
+          select: {
+            submissions: true,
+          },
+        },
+      };
+    }
+
     const assignments = await db.assignment.findMany({
       where: {
         subjectId: Number(req.params.subjectId),
@@ -1398,10 +1415,47 @@ export const getAssignments = async (req: Request, res: Response) => {
             topicId: true,
           },
         },
+        ...count,
       },
     });
 
-    return res.status(200).json(assignments);
+    let response = assignments;
+
+    if (isSubjectMember?.role == SubjectRole.STUDENT) {
+      const submissions = await db.submission.findMany({
+        where: {
+          studentId: req.user.id,
+          assignmentId: {
+            in: assignments.map((assignment) => assignment.id),
+          },
+        },
+        omit: {
+          studentId: true,
+        },
+        include: {
+          document: {
+            omit: {
+              assignmentId: true,
+              submissionId: true,
+              topicId: true,
+            },
+          },
+        },
+      });
+
+      response = assignments.map((assignment) => {
+        const submission = submissions.find(
+          (submission) => submission.assignmentId == assignment.id
+        );
+
+        return {
+          ...assignment,
+          submission: !!submission ? submission : null,
+        };
+      });
+    }
+
+    return res.status(200).json(response);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
@@ -1529,6 +1583,60 @@ export const addAssignment = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Edit an assignment
+// @route   PUT /api/school/:id/subject/:subjectId/assignment/:assignmentId
+// @access  Private
+export const editAssignment = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const assignment = await db.assignment.findFirst({
+      where: {
+        id: Number(req.params.assignmentId),
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        document: true,
+      },
+    });
+
+    if (!assignment) {
+      return res.status(404).send("Assignment not found");
+    }
+
+    const { title, deadline }: { title: string; deadline: Date } = req.body;
+
+    if (!title || !deadline) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const editedAssignment = await db.assignment.update({
+      where: {
+        id: Number(req.params.assignmentId),
+      },
+      data: {
+        title,
+        deadline,
+      },
+    });
+
+    return res.status(200).json(editedAssignment);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // @desc    Delete an assignment
 // @route   DELETE /api/school/:id/subject/:subjectId/assignment/:assignmentId
 // @access  Private
@@ -1556,12 +1664,12 @@ export const deleteAssignment = async (req: Request, res: Response) => {
       },
     });
 
-    const documents = [];
-    documents.push(isAssignmentOwnedBySubject?.document);
-
     if (!isAssignmentOwnedBySubject) {
       return res.status(403).send("Forbidden");
     }
+
+    const documents = [];
+    documents.push(isAssignmentOwnedBySubject?.document);
 
     const submissions = await db.submission.findMany({
       where: {
@@ -2403,6 +2511,369 @@ export const unAssignFromGroup = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json(deletedGroupMembers);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get all rows in marks table
+// @route   GET /api/school/:id/subject/:subjectId/table
+// @access  Private
+export const getMarksTableRows = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const rows = await db.marksTableRow.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    return res.status(200).json(rows);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Create a row in marks table
+// @route   POST /api/school/:id/subject/:subjectId/table
+// @access  Private
+export const addMarksTableRow = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name, max, count }: { name: string; max: number; count: boolean } = req.body;
+
+    if (
+      typeof name !== "string" ||
+      typeof max !== "number" ||
+      typeof count !== "boolean"
+    ) {
+      return res.status(400).send("Invalid data types");
+    }
+
+    if (!name || !max || (count != true && count != false)) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const row = await db.marksTableRow.create({
+      data: {
+        name,
+        max,
+        count,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    return res.status(201).json(row);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Edit a row in marks table
+// @route   PUT /api/school/:id/subject/:subjectId/table/:rowId
+// @access  Private
+export const editMarksTableRow = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const row = await db.marksTableRow.findUnique({
+      where: {
+        id: Number(req.params.rowId),
+      },
+    });
+
+    if (!row || row.subjectId != Number(req.params.subjectId)) {
+      return res.status(404).send("Row not found");
+    }
+
+    const { name, max, count }: { name: string; max: number; count: boolean } = req.body;
+
+    if (
+      typeof name !== "string" ||
+      typeof max !== "number" ||
+      typeof count !== "boolean"
+    ) {
+      return res.status(400).send("Invalid data types");
+    }
+
+    if (!name || !max || (count != true && count != false)) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const editedRow = await db.marksTableRow.update({
+      where: {
+        id: Number(req.params.rowId),
+      },
+      data: {
+        name,
+        max,
+        count,
+      },
+    });
+
+    return res.status(200).json(editedRow);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a row in marks table
+// @route   DELETE /api/school/:id/subject/:subjectId/table/:rowId
+// @access  Private
+export const deleteMarksTableRow = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const row = await db.marksTableRow.findUnique({
+      where: {
+        id: Number(req.params.rowId),
+      },
+    });
+
+    if (!row || row.subjectId != Number(req.params.subjectId)) {
+      return res.status(404).send("Row not found");
+    }
+
+    const deletedRow = await db.marksTableRow.delete({
+      where: {
+        id: Number(req.params.rowId),
+      },
+    });
+
+    return res.status(200).json(deletedRow);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get marks table for a student
+// @route   GET /api/school/:id/subject/:subjectId/table/student/:studentId
+// @access  Private
+export const getStudentMarksTable = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isStudentSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: Number(req.params.studentId),
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!isStudentSubjectMember) {
+      return res.status(404).send("Student not found");
+    }
+
+    const marksTable = await db.marksTableRow.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        marks: {
+          where: {
+            studentId: Number(req.params.studentId),
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    return res.status(200).json(marksTable);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Add marks in table for a student
+// @route   POST /api/school/:id/subject/:subjectId/table/student/:studentId
+// @access  Private
+export const addMarksToStudentTable = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const isStudentSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: Number(req.params.studentId),
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!isStudentSubjectMember) {
+      return res.status(404).send("Student not found");
+    }
+
+    const { marks } = req.body;
+
+    if (!marks) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (!Array.isArray(marks)) {
+      return res.status(400).send("Invalid data types");
+    }
+
+    const marksTableRows = await db.marksTableRow.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    for (const mark of marks) {
+      const isRowFound = marksTableRows.find((row) => row.id == mark.rowId);
+
+      if (!isRowFound) {
+        return res.status(404).send(`Row id ${mark.rowId} not found`);
+      }
+
+      const duplicates = marks.filter((m) => m.rowId == mark.rowId);
+
+      if (duplicates.length > 1) {
+        return res.status(400).send("Duplicate marks found");
+      }
+
+      if (mark.value > isRowFound.max) {
+        return res
+          .status(400)
+          .send(
+            `Mark value ${mark.value} is greater than the max ${isRowFound.max} of the row`
+          );
+      }
+    }
+
+    await db.markOnRow.deleteMany({
+      where: {
+        studentId: Number(req.params.studentId),
+        tableRowId: {
+          in: marks.map((mark) => mark.rowId),
+        },
+      },
+    });
+
+    const studentMarks = await db.markOnRow.createMany({
+      data: marks.map((mark) => ({
+        studentId: Number(req.params.studentId),
+        tableRowId: mark.rowId,
+        value: mark.value,
+      })),
+      skipDuplicates: true,
+    });
+
+    return res.status(200).json(studentMarks);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get marks table for the signed in user student
+// @route   GET /api/school/:id/subject/:subjectId/grade
+// @access  Private
+export const getGrade = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (isSubjectMember?.role != SubjectRole.STUDENT) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const marksTable = await db.marksTableRow.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        marks: {
+          where: {
+            studentId: req.user.id,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    return res.status(200).json(marksTable);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
