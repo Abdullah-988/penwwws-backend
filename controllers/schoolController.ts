@@ -2962,9 +2962,9 @@ export const addAttendanceSession = async (req: Request, res: Response) => {
       return res.status(403).send("Forbidden");
     }
 
-    const { name }: { name: string } = req.body;
+    const { name, expireDate }: { name: string; expireDate: string } = req.body;
 
-    if (!name) {
+    if (!name || !expireDate) {
       return res.status(400).send("Missing required fields");
     }
 
@@ -2975,6 +2975,7 @@ export const addAttendanceSession = async (req: Request, res: Response) => {
     const session = await db.attendanceSession.create({
       data: {
         name,
+        expirationDate: expireDate,
         subjectId: Number(req.params.subjectId),
       },
     });
@@ -3013,9 +3014,9 @@ export const editAttendanceSession = async (req: Request, res: Response) => {
       return res.status(404).send("Session not found");
     }
 
-    const { name }: { name: string } = req.body;
+    const { name, expireDate }: { name: string; expireDate: string } = req.body;
 
-    if (!name) {
+    if (!name || !expireDate) {
       return res.status(400).send("Missing required fields");
     }
 
@@ -3029,6 +3030,7 @@ export const editAttendanceSession = async (req: Request, res: Response) => {
       },
       data: {
         name,
+        expirationDate: expireDate,
       },
     });
 

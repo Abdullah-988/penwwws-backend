@@ -234,3 +234,69 @@ export const getSubjects = async (req: Request, res: Response) => {
     return res.status(500).send({ message: error.message });
   }
 };
+
+// @desc    Add an attendance
+// @route   POST /api/device/school/session/:sessionId
+// @access  Private
+export const addAttendance = async (req: Request, res: Response) => {
+  try {
+    const sessionId = Number(req.params.sessionId);
+
+    const session = await db.attendanceSession.findFirst({
+      where: {
+        id: sessionId,
+        subject: {
+          schoolId: req.school.id,
+        },
+      },
+    });
+
+    if (!session) {
+      return res.status(404).send("Session not found");
+    }
+
+    const { studentId } = req.body;
+
+    if (!studentId) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const student = await db.memberOnSchools.findFirst({
+      where: {
+        userId: studentId,
+        schoolId: req.school.id,
+      },
+    });
+
+    if (!student) {
+      return res.status(404).send("Student not found");
+    }
+
+    const attendance = await db.attendance.findFirst({
+      where: {
+        sessionId,
+        userId: studentId,
+      },
+    });
+
+    if (!!attendance) {
+      return res.status(400).send("Attendance already added");
+    }
+
+    if (session.expirationDate < new Date()) {
+      return res.status(400).send("Session expired");
+    }
+
+    const newAttendance = await db.attendance.create({
+      data: {
+        sessionId,
+        userId: studentId,
+      },
+    });
+
+    return res.status(200).json(newAttendance);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};

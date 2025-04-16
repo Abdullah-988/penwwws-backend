@@ -195,6 +195,7 @@ enum SubjectRole {
 model AttendanceSession {
   id                   Int           @id @default(autoincrement())
   name                 String
+  expirationDate       DateTime
 
   subjectId            Int
   subject              Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
