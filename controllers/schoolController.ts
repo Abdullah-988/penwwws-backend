@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import db from "../lib/db";
 import { Role, SubjectRole } from "@prisma/client";
+import bcrypt from "bcrypt";
 import axios from "axios";
 import { generateSignature } from "../util/cloudinary";
 
@@ -2874,6 +2875,372 @@ export const getGrade = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json(marksTable);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc   Get all session in a subject
+// @route   GET /api/school/:id/subject/:subjectId/session
+// @access  Private
+export const getAttendanceSessions = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && !isSubjectMember) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const sessions = await db.attendanceSession.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    return res.status(200).json(sessions);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Create a session in a subject
+// @route   POST /api/school/:id/subject/:subjectId/session
+// @access  Private
+export const addAttendanceSession = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { name }: { name: string } = req.body;
+
+    if (!name) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (typeof name !== "string") {
+      return res.status(400).send("Invalid name data type");
+    }
+
+    const session = await db.attendanceSession.create({
+      data: {
+        name,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    return res.status(201).json(session);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Edit a session in a subject
+// @route   PUT /api/school/:id/subject/:subjectId/session/:sessionId
+// @access  Private
+export const editAttendanceSession = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const session = await db.attendanceSession.findUnique({
+      where: {
+        id: Number(req.params.sessionId),
+      },
+    });
+
+    if (!session || session.subjectId != Number(req.params.subjectId)) {
+      return res.status(404).send("Session not found");
+    }
+
+    const { name }: { name: string } = req.body;
+
+    if (!name) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (typeof name !== "string") {
+      return res.status(400).send("Invalid name data type");
+    }
+
+    const editedSession = await db.attendanceSession.update({
+      where: {
+        id: Number(req.params.sessionId),
+      },
+      data: {
+        name,
+      },
+    });
+
+    return res.status(200).json(editedSession);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a session in a subject
+// @route   DELETE /api/school/:id/subject/:subjectId/session/:sessionId
+// @access  Private
+export const deleteAttendanceSession = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const session = await db.attendanceSession.findUnique({
+      where: {
+        id: Number(req.params.sessionId),
+      },
+    });
+
+    if (!session || session.subjectId != Number(req.params.subjectId)) {
+      return res.status(404).send("Session not found");
+    }
+
+    const deletedSession = await db.attendanceSession.delete({
+      where: {
+        id: Number(req.params.sessionId),
+      },
+    });
+
+    return res.status(200).json(deletedSession);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get session attenders
+// @route   GET /api/school/:id/subject/:subjectId/session/:sessionId/attenders
+// @access  Private
+export const getAttendanceSessionAttenders = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const session = await db.attendanceSession.findUnique({
+      where: {
+        id: Number(req.params.sessionId),
+      },
+    });
+
+    if (!session || session.subjectId != Number(req.params.subjectId)) {
+      return res.status(404).send("Session not found");
+    }
+
+    const attenders = await db.attendance.findMany({
+      where: {
+        sessionId: Number(req.params.sessionId),
+      },
+      select: {
+        id: true,
+        user: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    return res.status(200).json(attenders);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete an attendance
+// @route   DELETE /api/school/:id/subject/:subjectId/session/:sessionId/attenders/:attendanceId
+// @access  Private
+export const DeleteAnAttendance = async (req: Request, res: Response) => {
+  try {
+    const isSubjectMember = await db.memberOnSubject.findFirst({
+      where: {
+        userId: req.user.id,
+        schoolId: req.params.id,
+        subjectId: Number(req.params.subjectId),
+      },
+    });
+
+    if (!req.user.isAdmin && isSubjectMember?.role != SubjectRole.TEACHER) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const session = await db.attendanceSession.findUnique({
+      where: {
+        id: Number(req.params.sessionId),
+      },
+    });
+
+    if (!session || session.subjectId != Number(req.params.subjectId)) {
+      return res.status(404).send("Session not found");
+    }
+
+    const attendance = await db.attendance.findUnique({
+      where: {
+        id: Number(req.params.attendanceId),
+      },
+    });
+
+    if (!attendance || attendance.sessionId != Number(req.params.sessionId)) {
+      return res.status(404).send("Attendance not found");
+    }
+
+    const deletedAttendance = await db.attendance.delete({
+      where: {
+        id: Number(req.params.attendanceId),
+      },
+    });
+
+    return res.status(200).json(deletedAttendance);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get all school credentials for device login
+// @route   GET /api/school/:schoolId/device
+// @access  Public
+export const getCredentials = async (req: Request, res: Response) => {
+  try {
+    const credentials = await db.deviceCredentials.findMany({
+      where: {
+        schoolId: req.params.schoolId,
+      },
+      select: {
+        id: true,
+        credentialId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return res.status(200).json(credentials);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Create a credentials for device login
+// @route   POST /api/school/:schoolId/device
+// @access  Public
+export const createCredentials = async (req: Request, res: Response) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    if (password.length < 4) {
+      return res.status(400).send("Password must be at least 4 characters");
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const credentialId = Math.random().toString(36).substring(2, 8);
+
+    const newCredentials = await db.deviceCredentials.create({
+      data: {
+        credentialId,
+        hashedPassword,
+        schoolId: req.params.schoolId,
+      },
+      select: {
+        id: true,
+        credentialId: true,
+        schoolId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return res.status(201).json(newCredentials);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Delete a credentials for device login
+// @route   DELETE /api/school/:schoolId/device/:credentialId
+// @access  Public
+export const deleteCredentials = async (req: Request, res: Response) => {
+  try {
+    const credential = await db.deviceCredentials.findUnique({
+      where: {
+        id: Number(req.params.credentialId),
+      },
+    });
+
+    if (!credential) {
+      return res.status(404).send("Credential not found");
+    }
+
+    if (credential.schoolId != req.params.schoolId) {
+      return res.status(403).send("Forbidden");
+    }
+
+    const deletedCredential = await db.deviceCredentials.delete({
+      where: {
+        id: Number(req.params.credentialId),
+      },
+      omit: {
+        hashedPassword: true,
+      },
+    });
+
+    return res.status(200).json(deletedCredential);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });

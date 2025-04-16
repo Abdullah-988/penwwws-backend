@@ -31,6 +31,8 @@ model User {
   admissions           InviteAdmission[]
   submissions          Submission[]
   marks                MarkOnRow[]
+  fingerprints         Fingerprint[]
+  attendance           Attendance[]
 
   createdAt            DateTime      @default(now()) 
   updatedAt            DateTime      @updatedAt
@@ -108,8 +110,9 @@ model School {
   membersOnSubject  MemberOnSubject[]
   groups            Group[]
   invites           InviteToken[]
-
   admissions        InviteAdmission[]
+  devices           DeviceCredentials[]
+  fingerprints      Fingerprint[]
 
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -137,6 +140,21 @@ enum Role {
   STUDENT
 }
 
+model Fingerprint {
+  id                   Int           @id @default(autoincrement())
+  content              String
+
+  schoolId             String
+  school               School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId               Int
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt            DateTime      @default(now()) 
+  updatedAt            DateTime      @updatedAt
+
+  @@unique([schoolId, userId])
+}
+
 model Subject {
   id              Int       @id @default(autoincrement())
   name            String
@@ -149,6 +167,7 @@ model Subject {
   topics          Topic[]
   assignments     Assignment[]
   marksTable      MarksTableRow[]
+  attendSessions  AttendanceSession[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -171,6 +190,43 @@ model MemberOnSubject {
 enum SubjectRole {
   TEACHER
   STUDENT
+}
+
+model AttendanceSession {
+  id                   Int           @id @default(autoincrement())
+  name                 String
+
+  subjectId            Int
+  subject              Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  attenders            Attendance[]
+
+  createdAt            DateTime      @default(now()) 
+  updatedAt            DateTime      @updatedAt
+}
+
+model Attendance {
+  id                   Int                @id @default(autoincrement())
+
+  sessionId            Int
+  session              AttendanceSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId               Int
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt            DateTime           @default(now()) 
+  updatedAt            DateTime           @updatedAt
+}
+
+model DeviceCredentials {
+  id                   Int           @id @default(autoincrement())
+  credentialId         String        @unique
+  hashedPassword       String
+
+  schoolId             String
+  school               School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt            DateTime      @default(now()) 
+  updatedAt            DateTime      @updatedAt
 }
 
 model Topic {

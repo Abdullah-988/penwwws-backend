@@ -3,6 +3,7 @@ import cors from "cors";
 
 import usersRoute from "./routes/usersRoute";
 import schoolsRoute from "./routes/schoolsRoute";
+import devicesRoute from "./routes/devicesRoute";
 
 const port = process.env.PORT || 5555;
 
@@ -28,3 +29,4 @@ app.listen(port, () => {
 
 app.use("/api", usersRoute);
 app.use("/api", schoolsRoute);
+app.use("/api", devicesRoute);

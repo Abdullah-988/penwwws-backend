@@ -49,6 +49,15 @@ import {
   getStudentMarksTable,
   addMarksToStudentTable,
   getGrade,
+  createCredentials,
+  deleteCredentials,
+  getCredentials,
+  getAttendanceSessions,
+  addAttendanceSession,
+  editAttendanceSession,
+  deleteAttendanceSession,
+  getAttendanceSessionAttenders,
+  DeleteAnAttendance,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -181,5 +190,51 @@ router.post(
   addMarksToStudentTable
 );
 router.get("/school/:id/subject/:subjectId/grade", protect, access, getGrade);
+
+router.get("/school/:schoolId/device", protect, admin, getCredentials);
+router.post("/school/:schoolId/device", protect, admin, createCredentials);
+router.delete(
+  "/school/:schoolId/device/:credentialId",
+  protect,
+  admin,
+  deleteCredentials
+);
+
+router.get(
+  "/school/:id/subject/:subjectId/session",
+  protect,
+  access,
+  getAttendanceSessions
+);
+router.post(
+  "/school/:id/subject/:subjectId/session",
+  protect,
+  access,
+  addAttendanceSession
+);
+router.put(
+  "/school/:id/subject/:subjectId/session/:sessionId",
+  protect,
+  access,
+  editAttendanceSession
+);
+router.delete(
+  "/school/:id/subject/:subjectId/session/:sessionId",
+  protect,
+  access,
+  deleteAttendanceSession
+);
+router.get(
+  "/school/:id/subject/:subjectId/session/:sessionId/attenders",
+  protect,
+  access,
+  getAttendanceSessionAttenders
+);
+router.delete(
+  "/school/:id/subject/:subjectId/session/:sessionId/attenders/:attendanceId",
+  protect,
+  access,
+  DeleteAnAttendance
+);
 
 export default router;

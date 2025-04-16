@@ -8,7 +8,9 @@ type sendMailProps = {
 
 export async function sendMail({ subject, email, html }: sendMailProps) {
   const transporter = nodemailer.createTransport({
-    service: process.env.NODEMAILER_SERVICE,
+    host: process.env.NODEMAILER_HOST,
+    port: 587,
+    secure: false,
     auth: {
       user: process.env.NODEMAILER_EMAIL,
       pass: process.env.NODEMAILER_PASSWORD,
@@ -16,10 +18,10 @@ export async function sendMail({ subject, email, html }: sendMailProps) {
   });
 
   const mailOptions = {
-    from: `Penwwws <${process.env.NODEMAILER_EMAIL}>`,
+    from: `Penwwws <${process.env.NODEMAILER_EMAIL_ALIAS}>`,
     to: email,
-    subject: subject,
-    html: html,
+    subject,
+    html,
   };
 
   await new Promise((resolve, reject) => {

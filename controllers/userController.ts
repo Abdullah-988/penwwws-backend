@@ -5,6 +5,7 @@ import db from "../lib/db";
 import crypto from "crypto";
 import { sendMail } from "../lib/nodemailer";
 import axios from "axios";
+import { emailTemplate } from "../util/emailTemplate";
 
 // @desc    Request a password reset email
 // @route   POST /api/user/reset-password
@@ -232,7 +233,7 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
       });
 
       if (userExists) {
-        const JWTToken = await generateToken(userExists.id);
+        const JWTToken = await generateToken({ id: userExists.id });
 
         res.setHeader("Authorization", `Bearer ${JWTToken}`);
 
@@ -261,7 +262,7 @@ export const authorizeUserWithProvider = async (req: Request, res: Response) => 
         return res.status(400).send("Invalid user data");
       }
 
-      const JWTToken = await generateToken(newUser.id);
+      const JWTToken = await generateToken({ id: newUser.id });
 
       res.setHeader("Authorization", `Bearer ${JWTToken}`);
 
@@ -343,28 +344,24 @@ export const registerUser = async (req: Request, res: Response) => {
       },
     });
 
-    const url = req.headers.origin;
+    const url = req.headers.origin || "http://localhost:3000";
 
     const activateUrl = `${url}/activate/${authToken.token}`;
+
+    const year = new Date().getFullYear();
+    const html = emailTemplate
+      .replace("{{logoUrl}}", `${url}/images/penwwws-full-logo.png`)
+      .replace("{{userName}}", newUser.fullName)
+      .replace(/{{verifyUrl}}/g, activateUrl)
+      .replace("{{year}}", year.toString());
 
     await sendMail({
       subject: "Verify your Penwwws account email",
       email: newUser.email,
-      html: `
-      <div>
-        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 1rem;">Verify your email to start using Penwwws</h1>
-        <a href=${activateUrl} target="_blank" style="background-color: #0072dd; font-size: 14px; color: #ffffff; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem; text-decoration: none;">
-          Verify Your Email
-        </a>
-        <div style="margin-top: 5rem;">
-          <h2 style="font-size: 14px; margin-bottom: 1rem;">If you can't see the button, Use this link instead:</h2>
-          <a href=${activateUrl} target="_blank" style="color: #0072dd;">${activateUrl}</a>
-        </div>
-      </div>
-      `,
+      html,
     });
 
-    const token = await generateToken(newUser.id);
+    const token = await generateToken({ id: newUser.id });
 
     res.setHeader("Authorization", `Bearer ${token}`);
 
@@ -412,7 +409,7 @@ export const loginUser = async (req: Request, res: Response) => {
       return res.status(400).send("Incorrect email or password");
     }
 
-    const token = await generateToken(user.id);
+    const token = await generateToken({ id: user.id });
 
     res.setHeader("Authorization", `Bearer ${token}`);
 
@@ -533,8 +530,8 @@ export const getSchoolUser = async (req: Request, res: Response) => {
 };
 
 // Generate JWT
-const generateToken = async (id: number) => {
-  return await jwt.sign({ id }, process.env.JWT_SECRET!, {
+export const generateToken = async (data: { id?: number; schoolId?: string }) => {
+  return await jwt.sign(data, process.env.JWT_SECRET!, {
     expiresIn: "30d",
   });
 };
