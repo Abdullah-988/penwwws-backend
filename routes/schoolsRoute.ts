@@ -56,7 +56,7 @@ import {
   addAttendanceSession,
   editAttendanceSession,
   deleteAttendanceSession,
-  getAttendanceSessionAttenders,
+  getAttendanceSessionAttendersAndNonAttenders,
   DeleteAnAttendance,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
@@ -228,7 +228,7 @@ router.get(
   "/school/:id/subject/:subjectId/session/:sessionId/attenders",
   protect,
   access,
-  getAttendanceSessionAttenders
+  getAttendanceSessionAttendersAndNonAttenders
 );
 router.delete(
   "/school/:id/subject/:subjectId/session/:sessionId/attenders/:attendanceId",

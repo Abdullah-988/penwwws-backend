@@ -2898,13 +2898,47 @@ export const getAttendanceSessions = async (req: Request, res: Response) => {
       return res.status(403).send("Forbidden");
     }
 
+    let response;
+
     const sessions = await db.attendanceSession.findMany({
       where: {
         subjectId: Number(req.params.subjectId),
       },
+      include: {
+        attenders: {
+          where: {
+            userId: req.user.id,
+          },
+        },
+        _count: {
+          select: {
+            attenders: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
     });
 
-    return res.status(200).json(sessions);
+    if (isSubjectMember?.role == SubjectRole.STUDENT) {
+      response = sessions.map((session) => {
+        const { attenders, _count, ...rest } = session;
+
+        return {
+          ...rest,
+          attended: attenders.length > 0,
+        };
+      });
+    } else {
+      response = sessions.map((session) => {
+        const { attenders, ...rest } = session;
+
+        return rest;
+      });
+    }
+
+    return res.status(200).json(response);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
@@ -3048,7 +3082,10 @@ export const deleteAttendanceSession = async (req: Request, res: Response) => {
 // @desc    Get session attenders
 // @route   GET /api/school/:id/subject/:subjectId/session/:sessionId/attenders
 // @access  Private
-export const getAttendanceSessionAttenders = async (req: Request, res: Response) => {
+export const getAttendanceSessionAttendersAndNonAttenders = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const isSubjectMember = await db.memberOnSubject.findFirst({
       where: {
@@ -3072,6 +3109,22 @@ export const getAttendanceSessionAttenders = async (req: Request, res: Response)
       return res.status(404).send("Session not found");
     }
 
+    const subjectMembers = await db.memberOnSubject.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+
     const attenders = await db.attendance.findMany({
       where: {
         sessionId: Number(req.params.sessionId),
@@ -3090,7 +3143,18 @@ export const getAttendanceSessionAttenders = async (req: Request, res: Response)
         updatedAt: true,
       },
     });
-    return res.status(200).json(attenders);
+
+    const response = subjectMembers.map((member) => {
+      const isAttender = attenders.find((attender) => attender.user.id == member.user.id);
+
+      return {
+        ...member.user,
+        attendanceId: isAttender ? isAttender.id : null,
+        attended: !!isAttender,
+      };
+    });
+
+    return res.status(200).json(response);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
