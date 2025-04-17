@@ -336,12 +336,12 @@ export const getStudentsBySession = async (req: Request, res: Response) => {
         return {
           ...member.user,
         };
-      } else {
-        return {};
       }
     });
 
-    return res.status(200).json(response);
+    const filteredResponse = response.filter((member) => member !== null);
+
+    return res.status(200).json(filteredResponse);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
