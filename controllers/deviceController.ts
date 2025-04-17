@@ -413,15 +413,7 @@ export const getFingerprint = async (req: Request, res: Response) => {
       return res.status(404).send("Fingerprint not found");
     }
 
-    const fingerprintData = new Uint8Array(
-      atob(fingerprint.content)
-        .split("")
-        .map(function (c) {
-          return c.charCodeAt(0);
-        })
-    );
-
-    return res.status(200).json({ fingerprint: Array.from(fingerprintData) });
+    return res.status(200).json({ fingerprint: fingerprint.content });
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
