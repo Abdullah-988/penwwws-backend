@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import db from "../lib/db";
 import { generateToken } from "./userController";
+import { User } from "@prisma/client";
 
 // @desc    Authenticate a device login credential
 // @route   POST /api/device/login
@@ -329,19 +330,20 @@ export const getStudentsBySession = async (req: Request, res: Response) => {
       },
     });
 
-    const response = members.map((member) => {
+    const response: Omit<
+      Omit<Omit<User[], "hashedPassword">, "isEmailVerified">,
+      "provider"
+    > = [];
+    members.map((member) => {
       const isAttended = attenders.find((attender) => attender.userId === member.userId);
 
       if (!isAttended) {
-        return {
-          ...member.user,
-        };
+        // @ts-expect-error Prisma user type
+        response.push(member.user);
       }
     });
 
-    const filteredResponse = response.filter((member) => member !== null);
-
-    return res.status(200).json(filteredResponse);
+    return res.status(200).json(response);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
