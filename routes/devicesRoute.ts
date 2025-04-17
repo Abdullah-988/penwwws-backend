@@ -1,12 +1,16 @@
 import express from "express";
 import { device } from "../middleware/deviceMiddleware";
 import {
+  addFingerprint,
+  getFingerprint,
   getGroups,
   getSchool,
   getStudents,
   getStudentsByGroup,
+  getStudentsBySession,
   getStudentsBySubject,
   getSubjects,
+  getSubjectSessions,
   loginDeviceToCredential,
 } from "../controllers/deviceController";
 
@@ -20,5 +24,9 @@ router.get("/device/school/student/group/:groupId", device, getStudentsByGroup);
 router.get("/device/school/student/subject/:subjectId", device, getStudentsBySubject);
 router.get("/device/school/group", device, getGroups);
 router.get("/device/school/subject", device, getSubjects);
+router.get("/device/school/subject/:subjectId/session", device, getSubjectSessions);
+router.get("/device/school/student/session/:sessionId", device, getStudentsBySession);
+router.post("/device/school/fingerprint", device, addFingerprint);
+router.get("/device/school/fingerprint/:studentId", device, getFingerprint);
 
 export default router;

@@ -235,6 +235,207 @@ export const getSubjects = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Get subject sessions
+// @route   GET /api/device/school/subject/:subjectId/session
+// @access  Private
+export const getSubjectSessions = async (req: Request, res: Response) => {
+  try {
+    const subjectId = Number(req.params.subjectId);
+
+    const subject = await db.subject.findFirst({
+      where: {
+        id: subjectId,
+        schoolId: req.school.id,
+      },
+    });
+
+    if (!subject) {
+      return res.status(404).send("Subject not found");
+    }
+
+    const sessions = await db.attendanceSession.findMany({
+      where: {
+        subjectId,
+        expirationDate: {
+          gte: new Date(),
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+
+    return res.status(200).json(sessions);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get session student
+// @route   GET /api/device/school/student/session/:sessionId
+// @access  Private
+export const getStudentsBySession = async (req: Request, res: Response) => {
+  try {
+    const sessionId = Number(req.params.sessionId);
+
+    const session = await db.attendanceSession.findUnique({
+      where: {
+        id: sessionId,
+      },
+    });
+
+    if (!session) {
+      return res.status(404).send("Session not found");
+    }
+
+    const subject = await db.subject.findUnique({
+      where: {
+        id: session.subjectId,
+      },
+    });
+
+    if (subject?.schoolId !== req.school.id) {
+      return res.status(404).send("Session not found");
+    }
+
+    const members = await db.memberOnSubject.findMany({
+      where: {
+        subjectId: session.subjectId,
+      },
+      include: {
+        user: {
+          omit: {
+            hashedPassword: true,
+            isEmailVerified: true,
+            provider: true,
+          },
+        },
+      },
+    });
+
+    const attenders = await db.attendance.findMany({
+      where: {
+        sessionId: sessionId,
+      },
+      include: {
+        user: {
+          omit: {
+            hashedPassword: true,
+            isEmailVerified: true,
+            provider: true,
+          },
+        },
+      },
+    });
+
+    const response = members.map((member) => {
+      const isAttended = attenders.find((attender) => attender.userId === member.userId);
+
+      if (isAttended) {
+        return;
+      }
+
+      return {
+        ...member.user,
+      };
+    });
+
+    return res.status(200).json(response);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Add a fingerprint
+// @route   POST /api/device/school/fingerprint
+// @access  Private
+export const addFingerprint = async (req: Request, res: Response) => {
+  try {
+    const { studentId, fingerprint } = req.body;
+
+    if (!studentId || !fingerprint) {
+      return res.status(400).send("Missing required fields");
+    }
+
+    const student = await db.memberOnSchools.findFirst({
+      where: {
+        userId: studentId,
+        schoolId: req.school.id,
+      },
+    });
+
+    if (!student) {
+      return res.status(404).send("Student not found");
+    }
+
+    console.log(fingerprint);
+
+    const u8 = new Uint8Array(fingerprint);
+    const decoder = new TextDecoder("utf8");
+    const fingerprintBase64 = btoa(decoder.decode(u8));
+
+    console.log(fingerprintBase64);
+
+    const createdFingerprint = await db.fingerprint.create({
+      data: {
+        content: fingerprintBase64,
+        schoolId: req.school.id,
+        userId: studentId,
+      },
+    });
+
+    return res.status(200).json(createdFingerprint);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+// @desc    Get a fingerprint
+// @route   GET /api/device/school/fingerprint/:studentId
+// @access  Private
+export const getFingerprint = async (req: Request, res: Response) => {
+  try {
+    const studentId = Number(req.params.studentId);
+
+    const student = await db.memberOnSchools.findFirst({
+      where: {
+        userId: studentId,
+        schoolId: req.school.id,
+      },
+    });
+
+    if (!student) {
+      return res.status(404).send("Student not found");
+    }
+
+    const fingerprint = await db.fingerprint.findFirst({
+      where: {
+        userId: studentId,
+        schoolId: req.school.id,
+      },
+    });
+
+    if (!fingerprint) {
+      return res.status(404).send("Fingerprint not found");
+    }
+
+    const fingerprintData = new Uint8Array(
+      atob(fingerprint.content)
+        .split("")
+        .map(function (c) {
+          return c.charCodeAt(0);
+        })
+    );
+
+    return res.status(200).json({ fingerprint: Array.from(fingerprintData) });
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // @desc    Add an attendance
 // @route   POST /api/device/school/session/:sessionId
 // @access  Private

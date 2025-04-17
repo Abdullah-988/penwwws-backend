@@ -3114,6 +3114,7 @@ export const getAttendanceSessionAttendersAndNonAttenders = async (
     const subjectMembers = await db.memberOnSubject.findMany({
       where: {
         subjectId: Number(req.params.subjectId),
+        role: "STUDENT",
       },
       select: {
         user: {
