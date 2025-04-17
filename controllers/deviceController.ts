@@ -332,13 +332,11 @@ export const getStudentsBySession = async (req: Request, res: Response) => {
     const response = members.map((member) => {
       const isAttended = attenders.find((attender) => attender.userId === member.userId);
 
-      if (isAttended) {
-        return;
+      if (!isAttended) {
+        return {
+          ...member.user,
+        };
       }
-
-      return {
-        ...member.user,
-      };
     });
 
     return res.status(200).json(response);
