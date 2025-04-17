@@ -1,6 +1,7 @@
 import express from "express";
 import { device } from "../middleware/deviceMiddleware";
 import {
+  addAttendance,
   addFingerprint,
   getFingerprint,
   getGroups,
@@ -28,5 +29,6 @@ router.get("/device/school/subject/:subjectId/session", device, getSubjectSessio
 router.get("/device/school/student/session/:sessionId", device, getStudentsBySession);
 router.post("/device/school/fingerprint", device, addFingerprint);
 router.get("/device/school/fingerprint/:studentId", device, getFingerprint);
+router.post("/device/school/session/:sessionId", device, addAttendance);
 
 export default router;
