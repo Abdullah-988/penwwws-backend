@@ -370,17 +370,9 @@ export const addFingerprint = async (req: Request, res: Response) => {
       return res.status(404).send("Student not found");
     }
 
-    console.log(fingerprint);
-
-    const u8 = new Uint8Array(fingerprint);
-    const decoder = new TextDecoder("utf8");
-    const fingerprintBase64 = btoa(decoder.decode(u8));
-
-    console.log(fingerprintBase64);
-
     const createdFingerprint = await db.fingerprint.create({
       data: {
-        content: fingerprintBase64,
+        content: fingerprint,
         schoolId: req.school.id,
         userId: studentId,
       },
