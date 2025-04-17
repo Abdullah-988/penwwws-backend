@@ -336,6 +336,8 @@ export const getStudentsBySession = async (req: Request, res: Response) => {
         return {
           ...member.user,
         };
+      } else {
+        return {};
       }
     });
 
