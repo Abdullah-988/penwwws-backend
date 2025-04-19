@@ -266,6 +266,38 @@ export const removeFromSchool = async (req: Request, res: Response) => {
         .send("A user or some users provided are not in that school or not found");
     }
 
+    await db.memberOnSubject.deleteMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        schoolId: req.params.id,
+      },
+    });
+
+    const schoolGroups = await db.group.findMany({
+      where: {
+        schoolId: req.params.id,
+      },
+    });
+
+    let groupIds: number[] = [];
+
+    for (const group of schoolGroups) {
+      groupIds.push(group.id);
+    }
+
+    await db.memberOnGroup.deleteMany({
+      where: {
+        userId: {
+          in: userIds,
+        },
+        groupId: {
+          in: groupIds,
+        },
+      },
+    });
+
     const removedSchoolMembers = await db.memberOnSchools.deleteMany({
       where: {
         userId: {

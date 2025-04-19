@@ -25,6 +25,6 @@ router.post("/user/reset-password/:token", resetAccountPassword);
 router.post("/activate/:token", activateAccount);
 router.get("/me", protect, getUser);
 router.put("/me", protect, editUser);
-router.get("/me/:schoolId", protect, access, getSchoolUser);
+router.get("/me/:id", protect, access, getSchoolUser);
 
 export default router;
