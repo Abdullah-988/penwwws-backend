@@ -1273,6 +1273,16 @@ export const addDocument = async (req: Request, res: Response) => {
       },
     });
 
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "DOCUMENT_ADD",
+        details: `Document (${document.name}) uploaded to topic: ${isTopicOwnedBySubject?.name}`,
+      },
+    });
+
     return res.status(201).json(document);
   } catch (error: any) {
     console.log(error.message);
@@ -1330,6 +1340,25 @@ export const editDocument = async (req: Request, res: Response) => {
       data: {
         name,
         topicId,
+      },
+    });
+
+    let message = "";
+    if (editedDocument.name != document.name) {
+      message.concat(`document name: ${document.name} -> ${editedDocument.name} `);
+    }
+
+    if (editedDocument.topicId != document.topicId) {
+      message.concat(`document topic: ${document.topicId} -> ${editedDocument.topicId}`);
+    }
+
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "DOCUMENT_EDIT",
+        details: `${document.name} document edited ${message.trim()}`,
       },
     });
 
@@ -1397,6 +1426,16 @@ export const deleteDocument = async (req: Request, res: Response) => {
     const deletedDocument = await db.document.delete({
       where: {
         id: document.id,
+      },
+    });
+
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "DOCUMENT_DELETE",
+        details: `${deletedDocument.name} document deleted`,
       },
     });
 
@@ -1607,6 +1646,16 @@ export const addAssignment = async (req: Request, res: Response) => {
       });
     }
 
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "ASSIGNMENT_ADD",
+        details: `Assignment (${assignment.title}) created: (deadline: ${assignment.deadline})`,
+      },
+    });
+
     const response = !document ? assignment : { ...assignment, document: document };
 
     return res.status(201).json(response);
@@ -1660,6 +1709,29 @@ export const editAssignment = async (req: Request, res: Response) => {
       data: {
         title,
         deadline,
+      },
+    });
+
+    let message = "";
+    if (assignment.title != editedAssignment.title) {
+      message.concat(
+        `Assignment name: ${assignment.title} -> ${editedAssignment.title} `
+      );
+    }
+
+    if (assignment.deadline != editedAssignment.deadline) {
+      message.concat(
+        `Assignment deadline: ${assignment.deadline} -> ${editedAssignment.deadline}`
+      );
+    }
+
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "ASSIGNMENT_EDIT",
+        details: `${assignment.title} assignment edited ${message.trim()}`,
       },
     });
 
@@ -1737,6 +1809,16 @@ export const deleteAssignment = async (req: Request, res: Response) => {
     const deletedAssignment = await db.assignment.delete({
       where: {
         id: Number(req.params.assignmentId),
+      },
+    });
+
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "ASSIGNMENT_DELETE",
+        details: `${deletedAssignment.title} assignment deleted`,
       },
     });
 
@@ -2623,6 +2705,16 @@ export const addMarksTableRow = async (req: Request, res: Response) => {
       },
     });
 
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "MARK_TABLE_ADD",
+        details: `${row.name} added to marks table (max: ${row.max}, count: ${row.count})`,
+      },
+    });
+
     return res.status(201).json(row);
   } catch (error: any) {
     console.log(error.message);
@@ -2682,6 +2774,29 @@ export const editMarksTableRow = async (req: Request, res: Response) => {
       },
     });
 
+    let message = "";
+    if (editedRow.name != row.name) {
+      message?.concat(`row name ${row.name} -> ${editedRow.name} `);
+    }
+
+    if (editedRow.max != row.max) {
+      message?.concat(`row max ${row.max} -> ${editedRow.max} `);
+    }
+
+    if (editedRow.count != row.count) {
+      message?.concat(`row count ${row.count} -> ${editedRow.count}`);
+    }
+
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "MARK_TABLE_EDIT",
+        details: `${row.name} row edited from marks table ${message.trim()}`,
+      },
+    });
+
     return res.status(200).json(editedRow);
   } catch (error: any) {
     console.log(error.message);
@@ -2722,6 +2837,16 @@ export const deleteMarksTableRow = async (req: Request, res: Response) => {
       },
     });
 
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "MARK_TABLE_DELETE",
+        details: `${row.name} row deleted from marks table (max: ${deletedRow.max}, count: ${deletedRow.count})`,
+      },
+    });
+
     return res.status(200).json(deletedRow);
   } catch (error: any) {
     console.log(error.message);
@@ -2752,6 +2877,16 @@ export const getStudentMarksTable = async (req: Request, res: Response) => {
         schoolId: req.params.id,
         subjectId: Number(req.params.subjectId),
       },
+      include: {
+        user: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
     });
 
     if (!isStudentSubjectMember) {
@@ -2774,7 +2909,7 @@ export const getStudentMarksTable = async (req: Request, res: Response) => {
       },
     });
 
-    return res.status(200).json(marksTable);
+    return res.status(200).json({ user: isStudentSubjectMember.user, rows: marksTable });
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });
@@ -2808,6 +2943,10 @@ export const addMarksToStudentTable = async (req: Request, res: Response) => {
 
     if (!isStudentSubjectMember) {
       return res.status(404).send("Student not found");
+    }
+
+    if (isStudentSubjectMember.role != SubjectRole.STUDENT) {
+      return res.status(403).send("Forbidden");
     }
 
     const { marks } = req.body;
@@ -2848,6 +2987,32 @@ export const addMarksToStudentTable = async (req: Request, res: Response) => {
       }
     }
 
+    const studentOldMarks = await db.markOnRow.findMany({
+      where: {
+        studentId: Number(req.params.studentId),
+        tableRowId: {
+          in: marks.map((mark) => mark.rowId),
+        },
+      },
+    });
+
+    let onlyChangedMarks = [];
+
+    for (const mark of marks) {
+      const isMarkFound = studentOldMarks.find((m) => m.tableRowId == mark.rowId);
+      const rowName = marksTableRows.find((row) => row.id == mark.rowId)?.name;
+
+      if (!isMarkFound && mark.value != 0) {
+        onlyChangedMarks.push({ rowName, oldValue: 0, newValue: mark.value });
+      } else if (isMarkFound && isMarkFound?.value != mark.value) {
+        onlyChangedMarks.push({
+          rowName,
+          oldValue: isMarkFound?.value,
+          newValue: mark.value,
+        });
+      }
+    }
+
     await db.markOnRow.deleteMany({
       where: {
         studentId: Number(req.params.studentId),
@@ -2865,6 +3030,19 @@ export const addMarksToStudentTable = async (req: Request, res: Response) => {
       })),
       skipDuplicates: true,
     });
+
+    for (const mark of onlyChangedMarks) {
+      await db.log.create({
+        data: {
+          details: `Mark changed from ${mark.oldValue} to ${mark.newValue} on row ${mark.rowName}`,
+          schoolId: req.params.id,
+          subjectId: Number(req.params.subjectId),
+          userId: Number(req.params.studentId),
+          action: "MARK_CHANGE",
+          authorId: req.user.id,
+        },
+      });
+    }
 
     return res.status(200).json(studentMarks);
   } catch (error: any) {
@@ -3012,6 +3190,16 @@ export const addAttendanceSession = async (req: Request, res: Response) => {
       },
     });
 
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "ATTENDANCE_SESSION_ADD",
+        details: `Attendance Session (${session.name}) created: (expire date: ${session.expirationDate})`,
+      },
+    });
+
     return res.status(201).json(session);
   } catch (error: any) {
     console.log(error.message);
@@ -3066,6 +3254,27 @@ export const editAttendanceSession = async (req: Request, res: Response) => {
       },
     });
 
+    let message = "";
+    if (editedSession.name != session.name) {
+      message?.concat(`session name ${session.name} -> ${editedSession.name} `);
+    }
+
+    if (editedSession.expirationDate != session.expirationDate) {
+      message?.concat(
+        `session expiration date ${session.expirationDate} -> ${editedSession.expirationDate}`
+      );
+    }
+
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "ATTENDANCE_SESSION_EDIT",
+        details: `${session.name} attendance session edited ${message.trim()}`,
+      },
+    });
+
     return res.status(200).json(editedSession);
   } catch (error: any) {
     console.log(error.message);
@@ -3103,6 +3312,16 @@ export const deleteAttendanceSession = async (req: Request, res: Response) => {
     const deletedSession = await db.attendanceSession.delete({
       where: {
         id: Number(req.params.sessionId),
+      },
+    });
+
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        subjectId: Number(req.params.subjectId),
+        action: "ATTENDANCE_SESSION_DELETE",
+        details: `${deletedSession.name} attendance session deleted (name: ${deletedSession.name}, expire date: ${deletedSession.expirationDate})`,
       },
     });
 
@@ -3239,7 +3458,87 @@ export const DeleteAnAttendance = async (req: Request, res: Response) => {
       },
     });
 
+    await db.log.create({
+      data: {
+        schoolId: req.params.id,
+        authorId: req.user.id,
+        userId: attendance.userId,
+        subjectId: Number(req.params.subjectId),
+        action: "ATTENDANCE_DELETE",
+        details: `Attendance deleted on ${session.name} session`,
+      },
+    });
+
     return res.status(200).json(deletedAttendance);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get logs of a subject
+// @route   GET /api/school/:id/subject/:subjectId/log
+// @access  Private
+export const getLogs = async (req: Request, res: Response) => {
+  try {
+    const logs = await db.log.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return res.status(200).json(logs);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
+// @desc    Get the teachers of a subject
+// @route   GET /api/school/:id/subject/:subjectId/log/teacher
+// @access  Private
+export const getLogsTeachers = async (req: Request, res: Response) => {
+  try {
+    const logs = await db.log.findMany({
+      where: {
+        subjectId: Number(req.params.subjectId),
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const logsTeachers = logs.map((log) => log.author);
+
+    return res.status(200).json(logsTeachers);
   } catch (error: any) {
     console.log(error.message);
     return res.status(500).send({ message: error.message });

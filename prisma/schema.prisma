@@ -33,6 +33,8 @@ model User {
   marks                MarkOnRow[]
   fingerprints         Fingerprint[]
   attendance           Attendance[]
+  logs                 Log[]         @relation("author")
+  logsOn               Log[]         @relation("LogOn")
 
   createdAt            DateTime      @default(now()) 
   updatedAt            DateTime      @updatedAt
@@ -113,6 +115,7 @@ model School {
   admissions        InviteAdmission[]
   devices           DeviceCredentials[]
   fingerprints      Fingerprint[]
+  Log               Log[]
 
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -168,6 +171,7 @@ model Subject {
   assignments     Assignment[]
   marksTable      MarksTableRow[]
   attendSessions  AttendanceSession[]
+  logs            Log[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -190,6 +194,42 @@ model MemberOnSubject {
 enum SubjectRole {
   TEACHER
   STUDENT
+}
+
+model Log {
+  id                   Int           @id @default(autoincrement())
+  details              String?
+
+  action               Action
+
+  subjectId            Int?
+  subject              Subject?      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  userId               Int?
+  user                 User?         @relation("LogOn", fields: [userId], references: [id], onDelete: Cascade)
+  authorId             Int
+  author               User          @relation("author", fields: [authorId], references: [id], onDelete: Cascade)
+  schoolId             String
+  school               School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  createdAt            DateTime      @default(now()) 
+  updatedAt            DateTime      @updatedAt
+}
+
+enum Action {
+  MARK_CHANGE
+  MARK_TABLE_ADD
+  MARK_TABLE_EDIT
+  MARK_TABLE_DELETE
+  DOCUMENT_ADD
+  DOCUMENT_EDIT
+  DOCUMENT_DELETE
+  ASSIGNMENT_ADD
+  ASSIGNMENT_EDIT
+  ASSIGNMENT_DELETE
+  ATTENDANCE_SESSION_ADD
+  ATTENDANCE_SESSION_EDIT
+  ATTENDANCE_SESSION_DELETE
+  ATTENDANCE_DELETE
 }
 
 model AttendanceSession {

@@ -58,6 +58,8 @@ import {
   deleteAttendanceSession,
   getAttendanceSessionAttendersAndNonAttenders,
   DeleteAnAttendance,
+  getLogs,
+  getLogsTeachers,
 } from "../controllers/schoolController";
 import { protect } from "../middleware/authMiddleware";
 import { admin } from "../middleware/adminMiddleware";
@@ -236,5 +238,7 @@ router.delete(
   access,
   DeleteAnAttendance
 );
+router.get("/school/:id/subject/:subjectId/log", protect, admin, getLogs);
+router.get("/school/:id/subject/:subjectId/log/teacher", protect, admin, getLogsTeachers);
 
 export default router;
