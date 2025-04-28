@@ -4,6 +4,7 @@ import {
   addAttendance,
   addFingerprint,
   getFingerprint,
+  getFingerprints,
   getGroups,
   getSchool,
   getStudents,
@@ -29,6 +30,7 @@ router.get("/device/school/subject/:subjectId/session", device, getSubjectSessio
 router.get("/device/school/student/session/:sessionId", device, getStudentsBySession);
 router.post("/device/school/fingerprint", device, addFingerprint);
 router.get("/device/school/fingerprint/:studentId", device, getFingerprint);
+router.get("/device/school/subject/:subjectId/fingerprint", device, getFingerprints);
 router.post("/device/school/session/:sessionId", device, addAttendance);
 
 export default router;

@@ -422,6 +422,69 @@ export const getFingerprint = async (req: Request, res: Response) => {
   }
 };
 
+// @desc    Get all fingerprints of subject members
+// @route   GET /api/device/school/subject/:subjectId/fingerprint
+// @access  Private
+export const getFingerprints = async (req: Request, res: Response) => {
+  try {
+    const subject = await db.subject.findUnique({
+      where: {
+        id: Number(req.params.subjectId),
+      },
+    });
+    if (!subject) {
+      return res.status(404).send("Subject not found");
+    }
+
+    if (subject.schoolId !== req.school.id) {
+      return res.status(404).send("Subject not found");
+    }
+
+    const subjectMembers = await db.memberOnSubject.findMany({
+      where: {
+        subjectId: subject.id,
+      },
+      include: {
+        user: {
+          omit: {
+            hashedPassword: true,
+          },
+        },
+      },
+    });
+
+    const memberIds: number[] = [];
+
+    subjectMembers.map((member) => {
+      memberIds.push(member.userId);
+    });
+
+    const fingerprints = await db.fingerprint.findMany({
+      where: {
+        userId: {
+          in: memberIds,
+        },
+        schoolId: req.school.id,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            avatarUrl: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(fingerprints);
+  } catch (error: any) {
+    console.log(error.message);
+    return res.status(500).send({ message: error.message });
+  }
+};
+
 // @desc    Add an attendance
 // @route   POST /api/device/school/session/:sessionId
 // @access  Private
