@@ -864,19 +864,10 @@ export const assignToSubject = async (req: Request, res: Response) => {
       return res.status(400).send("Invalid user role");
     }
 
-    let acceptedRoles: Role[] = [Role.STUDENT];
-    if (as.toLowerCase() == "teacher") {
-      const roles = [Role.TEACHER, Role.SUPER_ADMIN, Role.ADMIN];
-      acceptedRoles = roles;
-    }
-
     const schoolMembers = await db.memberOnSchools.findMany({
       where: {
         userId: {
           in: userIds,
-        },
-        role: {
-          in: acceptedRoles,
         },
         schoolId: req.params.id,
       },
